@@ -415,7 +415,7 @@ function Dashboard() {
             </div>
           </div>
         </div>
-<div className="flex-1 min-w-0 flex flex-wrap gap-3 sm:pl-6 sm:border-l" style={{ borderColor: "#2B3E45" }}>
+        <div className="flex-1 min-w-0 flex flex-wrap gap-3 sm:pl-6 sm:border-l" style={{ borderColor: "#2B3E45" }}>
           {categories.slice(0, 6).map((c) => (
             <button
               key={c.id}
@@ -440,6 +440,7 @@ function Dashboard() {
             </button>
           ))}
         </div>
+      </div>
 
       <div className="space-y-3">
         {categories.map((cat) => {
