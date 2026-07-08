@@ -415,7 +415,7 @@ function Dashboard() {
             </div>
           </div>
         </div>
-        <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:pl-6 sm:border-l" style={{ borderColor: "#2B3E45" }}>
+<div className="flex-1 min-w-0 flex flex-wrap gap-3 sm:pl-6 sm:border-l" style={{ borderColor: "#2B3E45" }}>
           {categories.slice(0, 6).map((c) => (
             <button
               key={c.id}
@@ -424,12 +424,14 @@ function Dashboard() {
               style={{
                 background: openId === c.id ? "#243740" : "transparent",
                 border: "1px solid " + (openId === c.id ? "#3A5560" : "transparent"),
+                flex: "1 1 130px",
+                minWidth: 0,
               }}
             >
               <div className="text-[11px] font-mono truncate" style={{ color: "#8FA3AA" }}>
                 {c.label}
               </div>
-              <div className="flex items-baseline gap-2">
+              <div className="flex items-baseline gap-2 whitespace-nowrap">
                 <span className="text-lg font-mono" style={{ color: statusColorForScore(c.score) }}>
                   {c.score}
                 </span>
@@ -438,7 +440,6 @@ function Dashboard() {
             </button>
           ))}
         </div>
-      </div>
 
       <div className="space-y-3">
         {categories.map((cat) => {
