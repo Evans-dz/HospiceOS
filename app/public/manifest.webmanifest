@@ -1,0 +1,16 @@
+{
+  "name": "AIHospiceOS — Compliance Operating System",
+  "short_name": "AIHospiceOS",
+  "description": "AI-powered hospice compliance scoring, chart review, and regulatory watch.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0F1B21",
+  "theme_color": "#0F1B21",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
