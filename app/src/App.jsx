@@ -424,11 +424,11 @@ function Dashboard() {
               style={{
                 background: openId === c.id ? "#243740" : "transparent",
                 border: "1px solid " + (openId === c.id ? "#3A5560" : "transparent"),
-                flex: "1 1 130px",
+                flex: "1 1 160px",
                 minWidth: 0,
               }}
             >
-              <div className="text-[11px] font-mono truncate" style={{ color: "#8FA3AA" }}>
+              <div className="text-[11px] font-mono leading-snug" style={{ color: "#8FA3AA" }}>
                 {c.label}
               </div>
               <div className="flex items-baseline gap-2 whitespace-nowrap">
