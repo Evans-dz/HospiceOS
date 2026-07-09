@@ -395,7 +395,7 @@ function Dashboard() {
         <DataSourceBadge live={live} loading={loading} error={error} onReload={reload} />
       </div>
       <div
-        className="rounded-2xl p-6 flex flex-col xl:flex-row items-center xl:items-stretch gap-6"
+        className="rounded-2xl p-6 flex flex-col gap-6"
         style={{ background: "#1C2C33", border: "1px solid #2B3E45" }}
       >
         <div className="flex items-center gap-5">
@@ -415,7 +415,7 @@ function Dashboard() {
             </div>
           </div>
         </div>
-        <div className="w-full xl:flex-1 xl:min-w-0 flex flex-wrap gap-3 xl:pl-6 xl:border-l" style={{ borderColor: "#2B3E45" }}>
+        <div className="w-full flex flex-wrap gap-3 pt-5 border-t" style={{ borderColor: "#2B3E45" }}>
           {categories.slice(0, 6).map((c) => (
             <button
               key={c.id}
