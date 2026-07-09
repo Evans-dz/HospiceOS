@@ -30,16 +30,6 @@ const ICONS = {
 
 const BACKEND_CONFIGURED = APPS_SCRIPT_URL && APPS_SCRIPT_URL.startsWith("https://script.google.com/");
 
-/* ------------------------------------------------------------------ */
-/*  AIHospiceOS — Compliance Operating System prototype                */
-/*  Design tokens                                                      */
-/*  bg-void #0F1B21 · bg-panel #162329 · bg-raised #1C2C33              */
-/*  hairline #2B3E45 · ink #ECE6D8 · muted #8FA3AA                      */
-/*  gold (regulatory/citation) #C79A4D · good #4B9B72                   */
-/*  warn #D6A93F · risk #C1543A                                         */
-/*  display: "Fraunces" · body: "Inter" · data/mono: "IBM Plex Mono"    */
-/* ------------------------------------------------------------------ */
-
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 `;
@@ -52,8 +42,6 @@ async function callClaude(system, userText, maxTokens = 1000) {
   }
   const res = await fetch(APPS_SCRIPT_URL, {
     method: "POST",
-    // text/plain avoids a CORS preflight against the Apps Script endpoint;
-    // the body is still parsed as JSON on the other end.
     headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({
       action: "claude",
@@ -83,11 +71,6 @@ async function fetchSheetData(action) {
 function stripJsonFence(text) {
   return text.replace(/```json/gi, "").replace(/```/g, "").trim();
 }
-
-/* ------------------------------------------------------------------ */
-/*  Mock domain data — represents what the Regulatory Intelligence     */
-/*  Engine / Chart Auditor / Scoring Engine would produce in production*/
-/* ------------------------------------------------------------------ */
 
 const FALLBACK_SCORE_CATEGORIES = [
   {
@@ -259,24 +242,20 @@ const FALLBACK_REG_UPDATES = [
   },
 ];
 
-/* ------------------------------------------------------------------ */
-/*  Small building blocks                                              */
-/* ------------------------------------------------------------------ */
-
 const statusColor = (status) =>
-  status === "good" ? "#4B9B72" : status === "warn" ? "#D6A93F" : "#C1543A";
+  status === "good" ? "#2E9E62" : status === "warn" ? "#C98A1F" : "#D14343";
 
 const severityColor = (sev) =>
-  sev === "high" ? "#C1543A" : sev === "medium" ? "#D6A93F" : "#6E8790";
+  sev === "high" ? "#D14343" : sev === "medium" ? "#C98A1F" : "#8992A3";
 
 function ScoreRing({ score, size = 84, stroke = 8 }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, score));
-  const color = pct >= 85 ? "#4B9B72" : pct >= 70 ? "#D6A93F" : "#C1543A";
+  const color = pct >= 85 ? "#2E9E62" : pct >= 70 ? "#C98A1F" : "#D14343";
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2B3E45" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E3E7ED" strokeWidth={stroke} />
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -298,7 +277,7 @@ function ScoreRing({ score, size = 84, stroke = 8 }) {
         fontFamily="IBM Plex Mono, monospace"
         fontSize={size * 0.26}
         fontWeight="600"
-        fill="#ECE6D8"
+        fill="#16202E"
       >
         {pct}
       </text>
@@ -308,7 +287,7 @@ function ScoreRing({ score, size = 84, stroke = 8 }) {
 
 function TrendBadge({ trend }) {
   const Icon = trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
-  const color = trend > 0 ? "#4B9B72" : trend < 0 ? "#C1543A" : "#8FA3AA";
+  const color = trend > 0 ? "#2E9E62" : trend < 0 ? "#D14343" : "#64708A";
   return (
     <span
       style={{ color }}
@@ -319,12 +298,6 @@ function TrendBadge({ trend }) {
     </span>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Live data hook — reads from the Google Sheet backend when          */
-/*  configured, falls back to bundled sample data otherwise so the     */
-/*  app is always demoable.                                            */
-/* ------------------------------------------------------------------ */
 
 function useSheetData(action, key, fallback) {
   const [state, setState] = useState({ data: fallback, loading: BACKEND_CONFIGURED, error: null, live: false });
@@ -346,7 +319,7 @@ function useSheetData(action, key, fallback) {
       });
   };
 
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, []);
 
   return { ...state, reload: load };
 }
@@ -359,28 +332,24 @@ function resolveIcon(icon) {
 function DataSourceBadge({ live, loading, error, onReload }) {
   if (loading) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-[11px] font-mono" style={{ color: "#8FA3AA" }}>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-mono" style={{ color: "#64708A" }}>
         <Loader2 size={11} className="animate-spin" /> loading sheet…
       </span>
     );
   }
   if (live) {
     return (
-      <button onClick={onReload} className="inline-flex items-center gap-1.5 text-[11px] font-mono" style={{ color: "#4B9B72" }}>
+      <button onClick={onReload} className="inline-flex items-center gap-1.5 text-[11px] font-mono" style={{ color: "#2E9E62" }}>
         <RefreshCw size={11} /> live from Google Sheet
       </button>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono" style={{ color: "#D6A93F" }} title={error || "Not connected"}>
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono" style={{ color: "#C98A1F" }} title={error || "Not connected"}>
       <CloudOff size={11} /> sample data — {BACKEND_CONFIGURED ? "sheet unreachable" : "connect your sheet in src/config.js"}
     </span>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Dashboard tab                                                      */
-/* ------------------------------------------------------------------ */
 
 function Dashboard() {
   const [openId, setOpenId] = useState("denial");
@@ -396,39 +365,39 @@ function Dashboard() {
       </div>
       <div
         className="rounded-2xl p-6 flex flex-col gap-6"
-        style={{ background: "#1C2C33", border: "1px solid #2B3E45" }}
+        style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}
       >
         <div className="flex items-center gap-5">
           <ScoreRing score={overall} size={104} stroke={9} />
           <div>
-            <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#8FA3AA" }}>
+            <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
               Composite Compliance Index
             </div>
             <div
               className="text-2xl mt-1"
-              style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }}
+              style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}
             >
               Meridian Hospice &amp; Palliative Care
             </div>
-            <div className="text-sm mt-1" style={{ color: "#8FA3AA" }}>
+            <div className="text-sm mt-1" style={{ color: "#64708A" }}>
               8 charts flagged for review · 2 categories trending down · next mock survey window in 41 days
             </div>
           </div>
         </div>
-        <div className="w-full flex flex-wrap gap-3 pt-5 border-t" style={{ borderColor: "#2B3E45" }}>
+        <div className="w-full flex flex-wrap gap-3 pt-5 border-t" style={{ borderColor: "#E3E7ED" }}>
           {categories.slice(0, 6).map((c) => (
             <button
               key={c.id}
               onClick={() => setOpenId(c.id)}
               className="text-left rounded-lg px-3 py-2 transition-colors"
               style={{
-                background: openId === c.id ? "#243740" : "transparent",
-                border: "1px solid " + (openId === c.id ? "#3A5560" : "transparent"),
+                background: openId === c.id ? "#F7F0E1" : "transparent",
+                border: "1px solid " + (openId === c.id ? "#E8CFA0" : "transparent"),
                 flex: "1 1 160px",
                 minWidth: 0,
               }}
             >
-              <div className="text-[11px] font-mono leading-snug" style={{ color: "#8FA3AA" }}>
+              <div className="text-[11px] font-mono leading-snug" style={{ color: "#64708A" }}>
                 {c.label}
               </div>
               <div className="flex items-baseline gap-2 whitespace-nowrap">
@@ -450,7 +419,7 @@ function Dashboard() {
             <div
               key={cat.id}
               className="rounded-2xl overflow-hidden"
-              style={{ background: "#162329", border: "1px solid #2B3E45" }}
+              style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}
             >
               <button
                 onClick={() => setOpenId(open ? null : cat.id)}
@@ -459,29 +428,29 @@ function Dashboard() {
                 <ScoreRing score={cat.score} size={54} stroke={6} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <Icon size={15} style={{ color: "#C79A4D" }} />
-                    <span style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }} className="text-base">
+                    <Icon size={15} style={{ color: "#B8863F" }} />
+                    <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-base">
                       {cat.label}
                     </span>
                     <TrendBadge trend={cat.trend} />
                   </div>
-                  <p className="text-sm mt-1 truncate" style={{ color: "#8FA3AA" }}>
+                  <p className="text-sm mt-1 truncate" style={{ color: "#64708A" }}>
                     {cat.summary}
                   </p>
                 </div>
-                {open ? <ChevronDown size={18} color="#8FA3AA" /> : <ChevronRight size={18} color="#8FA3AA" />}
+                {open ? <ChevronDown size={18} color="#64708A" /> : <ChevronRight size={18} color="#64708A" />}
               </button>
 
               {open && (
-                <div className="px-4 pb-5 pt-1 space-y-5" style={{ borderTop: "1px solid #2B3E45" }}>
+                <div className="px-4 pb-5 pt-1 space-y-5" style={{ borderTop: "1px solid #E3E7ED" }}>
                   <div>
-                    <div className="text-xs uppercase tracking-widest font-mono mt-4 mb-2" style={{ color: "#8FA3AA" }}>
+                    <div className="text-xs uppercase tracking-widest font-mono mt-4 mb-2" style={{ color: "#64708A" }}>
                       Why this score
                     </div>
                     <div className="space-y-2">
                       {cat.factors.map((f, i) => (
                         <div key={i} className="flex items-start gap-3">
-                          <div className="w-10 shrink-0 text-right text-[11px] font-mono pt-0.5" style={{ color: "#6E8790" }}>
+                          <div className="w-10 shrink-0 text-right text-[11px] font-mono pt-0.5" style={{ color: "#8992A3" }}>
                             {f.weight}%
                           </div>
                           <div
@@ -489,10 +458,10 @@ function Dashboard() {
                             style={{ background: statusColor(f.status) }}
                           />
                           <div className="flex-1">
-                            <div className="text-sm" style={{ color: "#ECE6D8" }}>
+                            <div className="text-sm" style={{ color: "#16202E" }}>
                               {f.label}
                             </div>
-                            <div className="text-xs mt-0.5" style={{ color: "#8FA3AA" }}>
+                            <div className="text-xs mt-0.5" style={{ color: "#64708A" }}>
                               {f.detail}
                             </div>
                           </div>
@@ -501,13 +470,13 @@ function Dashboard() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#C79A4D" }}>
+                    <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#B8863F" }}>
                       To raise this score
                     </div>
                     <ul className="space-y-1.5">
                       {cat.actions.map((a, i) => (
-                        <li key={i} className="text-sm flex gap-2" style={{ color: "#ECE6D8" }}>
-                          <CheckCircle2 size={15} className="shrink-0 mt-0.5" color="#4B9B72" />
+                        <li key={i} className="text-sm flex gap-2" style={{ color: "#16202E" }}>
+                          <CheckCircle2 size={15} className="shrink-0 mt-0.5" color="#2E9E62" />
                           {a}
                         </li>
                       ))}
@@ -524,12 +493,8 @@ function Dashboard() {
 }
 
 function statusColorForScore(score) {
-  return score >= 85 ? "#4B9B72" : score >= 70 ? "#D6A93F" : "#C1543A";
+  return score >= 85 ? "#2E9E62" : score >= 70 ? "#C98A1F" : "#D14343";
 }
-
-/* ------------------------------------------------------------------ */
-/*  Chart Review tab — real Claude call                                */
-/* ------------------------------------------------------------------ */
 
 const SAMPLE_CHART = `Recertification Narrative — Episode 3
 Patient has end-stage COPD. Patient continues to decline. Family reports patient is more tired.
@@ -566,14 +531,14 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl p-5" style={{ background: "#162329", border: "1px solid #2B3E45" }}>
+      <div className="rounded-2xl p-5" style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
         <div className="flex items-center gap-2 mb-1">
-          <FileText size={16} color="#C79A4D" />
-          <span style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }} className="text-lg">
+          <FileText size={16} color="#B8863F" />
+          <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">
             Chart Auditor
           </span>
         </div>
-        <p className="text-sm mb-3" style={{ color: "#8FA3AA" }}>
+        <p className="text-sm mb-3" style={{ color: "#64708A" }}>
           Paste chart text, certifications, or IDG notes below. This calls Claude live to flag missing elements, contradictions, and signature/date gaps against hospice CoP norms.
         </p>
         <textarea
@@ -582,9 +547,9 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
           rows={9}
           className="w-full rounded-lg p-3 text-sm font-mono focus:outline-none"
           style={{
-            background: "#0F1B21",
-            border: "1px solid #2B3E45",
-            color: "#ECE6D8",
+            background: "#F5F6F8",
+            border: "1px solid #E3E7ED",
+            color: "#16202E",
           }}
           placeholder="Paste chart text here…"
         />
@@ -593,7 +558,7 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
             onClick={analyze}
             disabled={loading}
             className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-opacity"
-            style={{ background: "#C79A4D", color: "#0F1B21" }}
+            style={{ background: "#B8863F", color: "#1B2740" }}
           >
             {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
             {loading ? "Analyzing…" : "Analyze chart"}
@@ -604,7 +569,7 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
               setResult(null);
             }}
             className="text-xs underline"
-            style={{ color: "#8FA3AA" }}
+            style={{ color: "#64708A" }}
           >
             Reset to sample
           </button>
@@ -612,38 +577,38 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
       </div>
 
       {error && (
-        <div className="rounded-lg p-3 text-sm" style={{ background: "#2A1B18", color: "#E29B85", border: "1px solid #5A3226" }}>
+        <div className="rounded-lg p-3 text-sm" style={{ background: "#FDECEA", color: "#B23A2E", border: "1px solid #F3B8AC" }}>
           {error}
         </div>
       )}
 
       {result && (
-        <div className="rounded-2xl p-5 space-y-5" style={{ background: "#162329", border: "1px solid #2B3E45" }}>
+        <div className="rounded-2xl p-5 space-y-5" style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
           <div>
-            <div className="text-xs uppercase tracking-widest font-mono mb-1" style={{ color: "#8FA3AA" }}>
+            <div className="text-xs uppercase tracking-widest font-mono mb-1" style={{ color: "#64708A" }}>
               Assessment
             </div>
-            <p className="text-sm" style={{ color: "#ECE6D8" }}>{result.overallAssessment}</p>
+            <p className="text-sm" style={{ color: "#16202E" }}>{result.overallAssessment}</p>
           </div>
 
           {result.issues && result.issues.length > 0 && (
             <div>
-              <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#8FA3AA" }}>
+              <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#64708A" }}>
                 Findings
               </div>
               <div className="space-y-2">
                 {result.issues.map((iss, i) => (
-                  <div key={i} className="flex gap-3 p-3 rounded-lg" style={{ background: "#1C2C33" }}>
+                  <div key={i} className="flex gap-3 p-3 rounded-lg" style={{ background: "#F5F6F8" }}>
                     <span
                       className="text-[10px] uppercase font-mono px-2 py-1 rounded shrink-0 h-fit"
-                      style={{ background: severityColor(iss.severity) + "22", color: severityColor(iss.severity) }}
+                      style={{ background: severityColor(iss.severity) + "1A", color: severityColor(iss.severity) }}
                     >
                       {iss.severity}
                     </span>
                     <div className="min-w-0">
-                      <div className="text-xs font-mono mb-0.5" style={{ color: "#C79A4D" }}>{iss.category}</div>
-                      <div className="text-sm" style={{ color: "#ECE6D8" }}>{iss.finding}</div>
-                      <div className="text-sm mt-1" style={{ color: "#8FA3AA" }}>→ {iss.recommendation}</div>
+                      <div className="text-xs font-mono mb-0.5" style={{ color: "#B8863F" }}>{iss.category}</div>
+                      <div className="text-sm" style={{ color: "#16202E" }}>{iss.finding}</div>
+                      <div className="text-sm mt-1" style={{ color: "#64708A" }}>→ {iss.recommendation}</div>
                     </div>
                   </div>
                 ))}
@@ -653,13 +618,13 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
 
           {result.strengths && result.strengths.length > 0 && (
             <div>
-              <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#8FA3AA" }}>
+              <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#64708A" }}>
                 What's solid
               </div>
               <ul className="space-y-1">
                 {result.strengths.map((s, i) => (
-                  <li key={i} className="text-sm flex gap-2" style={{ color: "#ECE6D8" }}>
-                    <CheckCircle2 size={15} className="shrink-0 mt-0.5" color="#4B9B72" />
+                  <li key={i} className="text-sm flex gap-2" style={{ color: "#16202E" }}>
+                    <CheckCircle2 size={15} className="shrink-0 mt-0.5" color="#2E9E62" />
                     {s}
                   </li>
                 ))}
@@ -671,10 +636,6 @@ Keep it to at most 5 issues and 3 strengths, each field under 30 words.`;
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Regulatory Watch tab                                               */
-/* ------------------------------------------------------------------ */
 
 function RegulatoryWatch() {
   const [checked, setChecked] = useState({});
@@ -688,14 +649,14 @@ function RegulatoryWatch() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <BookOpen size={16} color="#C79A4D" />
-          <span style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }} className="text-lg">
+          <BookOpen size={16} color="#B8863F" />
+          <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">
             Regulatory Watch
           </span>
         </div>
         <DataSourceBadge live={live} loading={loading} error={error} onReload={reload} />
       </div>
-      <p className="text-sm -mt-2" style={{ color: "#8FA3AA" }}>
+      <p className="text-sm -mt-2" style={{ color: "#64708A" }}>
         New and changed hospice requirements, translated into what your agency actually needs to do.
       </p>
 
@@ -703,37 +664,37 @@ function RegulatoryWatch() {
         const total = r.checklist.length;
         const done = r.checklist.filter((_, i) => checked[`${r.id}-${i}`]).length;
         return (
-          <div key={r.id} className="rounded-2xl p-5" style={{ background: "#162329", border: "1px solid #2B3E45" }}>
+          <div key={r.id} className="rounded-2xl p-5" style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <span
                   className="text-[10px] uppercase font-mono px-2 py-1 rounded"
-                  style={{ background: severityColor(r.severity) + "22", color: severityColor(r.severity) }}
+                  style={{ background: severityColor(r.severity) + "1A", color: severityColor(r.severity) }}
                 >
                   {r.severity} impact
                 </span>
-                <span className="text-[11px] font-mono" style={{ color: "#6E8790" }}>{r.source} · {r.tag}</span>
+                <span className="text-[11px] font-mono" style={{ color: "#8992A3" }}>{r.source} · {r.tag}</span>
               </div>
-              <span className="text-[11px] font-mono flex items-center gap-1 shrink-0" style={{ color: "#6E8790" }}>
+              <span className="text-[11px] font-mono flex items-center gap-1 shrink-0" style={{ color: "#8992A3" }}>
                 <Clock size={12} />
                 {r.date}
               </span>
             </div>
-            <h3 className="mt-2 text-base" style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }}>
+            <h3 className="mt-2 text-base" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
               {r.title}
             </h3>
-            <p className="text-sm mt-2" style={{ color: "#8FA3AA" }}>{r.summary}</p>
-            <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: "#1C2C33", color: "#ECE6D8" }}>
-              <span className="font-mono text-xs" style={{ color: "#C79A4D" }}>What it means for you: </span>
+            <p className="text-sm mt-2" style={{ color: "#64708A" }}>{r.summary}</p>
+            <div className="mt-3 p-3 rounded-lg text-sm" style={{ background: "#F5F6F8", color: "#16202E" }}>
+              <span className="font-mono text-xs" style={{ color: "#B8863F" }}>What it means for you: </span>
               {r.impact}
             </div>
 
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase tracking-widest font-mono" style={{ color: "#8FA3AA" }}>
+                <span className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
                   Action checklist
                 </span>
-                <span className="text-xs font-mono" style={{ color: done === total ? "#4B9B72" : "#8FA3AA" }}>
+                <span className="text-xs font-mono" style={{ color: done === total ? "#2E9E62" : "#64708A" }}>
                   {done}/{total} done
                 </span>
               </div>
@@ -746,21 +707,21 @@ function RegulatoryWatch() {
                       key={i}
                       onClick={() => toggle(r.id, i)}
                       className="w-full flex items-start gap-2 text-left p-2 rounded-lg transition-colors"
-                      style={{ background: isChecked ? "#1B2E24" : "transparent" }}
+                      style={{ background: isChecked ? "#EAF6EF" : "transparent" }}
                     >
                       <div
                         className="w-4 h-4 rounded shrink-0 mt-0.5 flex items-center justify-center"
                         style={{
-                          border: `1.5px solid ${isChecked ? "#4B9B72" : "#3A5560"}`,
-                          background: isChecked ? "#4B9B72" : "transparent",
+                          border: `1.5px solid ${isChecked ? "#2E9E62" : "#C7CDD8"}`,
+                          background: isChecked ? "#2E9E62" : "transparent",
                         }}
                       >
-                        {isChecked && <CheckCircle2 size={11} color="#0F1B21" />}
+                        {isChecked && <CheckCircle2 size={11} color="#FFFFFF" />}
                       </div>
                       <span
                         className="text-sm"
                         style={{
-                          color: isChecked ? "#8FA3AA" : "#ECE6D8",
+                          color: isChecked ? "#64708A" : "#16202E",
                           textDecoration: isChecked ? "line-through" : "none",
                         }}
                       >
@@ -777,10 +738,6 @@ function RegulatoryWatch() {
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  Copilot tab — real Claude call                                     */
-/* ------------------------------------------------------------------ */
 
 function Copilot() {
   const [messages, setMessages] = useState([
@@ -817,11 +774,11 @@ function Copilot() {
   return (
     <div
       className="rounded-2xl flex flex-col h-[65vh] md:h-[calc(100vh-7rem)] md:max-h-[46rem]"
-      style={{ background: "#162329", border: "1px solid #2B3E45" }}
+      style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}
     >
-      <div className="p-4 flex items-center gap-2" style={{ borderBottom: "1px solid #2B3E45" }}>
-        <MessageSquare size={16} color="#C79A4D" />
-        <span style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }} className="text-lg">
+      <div className="p-4 flex items-center gap-2" style={{ borderBottom: "1px solid #E3E7ED" }}>
+        <MessageSquare size={16} color="#B8863F" />
+        <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">
           Compliance Copilot
         </span>
       </div>
@@ -831,8 +788,8 @@ function Copilot() {
             <div
               className="max-w-[85%] rounded-xl px-3 py-2 text-sm"
               style={{
-                background: m.role === "user" ? "#C79A4D" : "#1C2C33",
-                color: m.role === "user" ? "#0F1B21" : "#ECE6D8",
+                background: m.role === "user" ? "#B8863F" : "#F5F6F8",
+                color: m.role === "user" ? "#1B2740" : "#16202E",
               }}
             >
               {m.text}
@@ -841,27 +798,27 @@ function Copilot() {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="rounded-xl px-3 py-2 text-sm flex items-center gap-2" style={{ background: "#1C2C33", color: "#8FA3AA" }}>
+            <div className="rounded-xl px-3 py-2 text-sm flex items-center gap-2" style={{ background: "#F5F6F8", color: "#64708A" }}>
               <Loader2 size={13} className="animate-spin" /> thinking…
             </div>
           </div>
         )}
         <div ref={endRef} />
       </div>
-      <div className="p-3 flex gap-2" style={{ borderTop: "1px solid #2B3E45" }}>
+      <div className="p-3 flex gap-2" style={{ borderTop: "1px solid #E3E7ED" }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Ask about a score, a regulation, a tag…"
           className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
-          style={{ background: "#0F1B21", border: "1px solid #2B3E45", color: "#ECE6D8" }}
+          style={{ background: "#F5F6F8", border: "1px solid #E3E7ED", color: "#16202E" }}
         />
         <button
           onClick={send}
           disabled={loading}
           className="rounded-lg px-3 flex items-center justify-center"
-          style={{ background: "#C79A4D", color: "#0F1B21" }}
+          style={{ background: "#B8863F", color: "#1B2740" }}
         >
           <Send size={15} />
         </button>
@@ -870,10 +827,6 @@ function Copilot() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Shell                                                               */
-/* ------------------------------------------------------------------ */
-
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: Activity },
   { id: "chart", label: "Chart Review", icon: FileText },
@@ -881,8 +834,6 @@ const TABS = [
   { id: "copilot", label: "Copilot", icon: MessageSquare },
 ];
 
-// Wider tabs get more breathing room on large screens; the chat stays
-// narrow so lines don't stretch across a full desktop monitor.
 const CONTENT_MAX_W = {
   dashboard: "max-w-5xl",
   chart: "max-w-4xl",
@@ -895,15 +846,15 @@ function Logo() {
     <div className="flex items-center gap-3">
       <div
         className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-        style={{ background: "#C79A4D" }}
+        style={{ background: "#B8863F" }}
       >
-        <ShieldCheck size={19} color="#0F1B21" />
+        <ShieldCheck size={19} color="#1B2740" />
       </div>
       <div>
-        <div style={{ fontFamily: "Fraunces, serif", color: "#ECE6D8" }} className="text-xl leading-none">
+        <div style={{ fontFamily: "Fraunces, serif", color: "#F3F5F8" }} className="text-xl leading-none">
           AIHospiceOS
         </div>
-        <div className="text-[11px] font-mono mt-0.5" style={{ color: "#6E8790" }}>
+        <div className="text-[11px] font-mono mt-0.5" style={{ color: "#93A0B8" }}>
           compliance · quality · audit readiness
         </div>
       </div>
@@ -929,10 +880,10 @@ function InstallBanner() {
   return (
     <div
       className="flex items-center gap-3 mx-4 md:mx-8 mt-4 rounded-xl px-4 py-3"
-      style={{ background: "#243740", border: "1px solid #3A5560" }}
+      style={{ background: "#FBF3E4", border: "1px solid #EAD3A3" }}
     >
-      <ShieldCheck size={16} color="#C79A4D" className="shrink-0" />
-      <span className="text-sm flex-1" style={{ color: "#ECE6D8" }}>
+      <ShieldCheck size={16} color="#B8863F" className="shrink-0" />
+      <span className="text-sm flex-1" style={{ color: "#16202E" }}>
         Install AIHospiceOS for quick, full-screen access.
       </span>
       <button
@@ -942,14 +893,14 @@ function InstallBanner() {
           setPrompt(null);
         }}
         className="text-xs font-medium rounded-lg px-3 py-1.5 shrink-0"
-        style={{ background: "#C79A4D", color: "#0F1B21" }}
+        style={{ background: "#B8863F", color: "#1B2740" }}
       >
         Install
       </button>
       <button
         onClick={() => setDismissed(true)}
         className="text-xs shrink-0"
-        style={{ color: "#8FA3AA" }}
+        style={{ color: "#64708A" }}
       >
         Not now
       </button>
@@ -962,15 +913,14 @@ export default function AIHospiceOS() {
 
   return (
     <div
-      style={{ background: "#0F1B21", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}
+      style={{ background: "#F5F6F8", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}
       className="flex flex-col md:flex-row"
     >
       <style>{FONT_IMPORT}</style>
 
-      {/* Desktop sidebar — hidden on phones */}
       <aside
         className="hidden md:flex md:flex-col md:w-60 md:shrink-0 md:h-screen md:sticky md:top-0 px-5 py-6"
-        style={{ borderRight: "1px solid #2B3E45" }}
+        style={{ background: "#14213D", borderRight: "1px solid #1E2C4E" }}
       >
         <Logo />
         <nav className="mt-8 flex flex-col gap-1">
@@ -983,8 +933,8 @@ export default function AIHospiceOS() {
                 onClick={() => setTab(t.id)}
                 className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-left transition-colors"
                 style={{
-                  background: active ? "#243740" : "transparent",
-                  color: active ? "#ECE6D8" : "#8FA3AA",
+                  background: active ? "#1E2C4E" : "transparent",
+                  color: active ? "#F3F5F8" : "#93A0B8",
                 }}
               >
                 <Icon size={16} />
@@ -993,17 +943,15 @@ export default function AIHospiceOS() {
             );
           })}
         </nav>
-        <div className="mt-auto text-[11px] font-mono leading-relaxed" style={{ color: "#4A5F67" }}>
+        <div className="mt-auto text-[11px] font-mono leading-relaxed" style={{ color: "#6B7A99" }}>
           Prototype — scores &amp; regulatory items are illustrative. Chart Review and Copilot call Claude live.
         </div>
       </aside>
 
-      {/* Mobile top bar — hidden on desktop */}
-      <div className="md:hidden px-4 pt-6 pb-2">
+      <div className="md:hidden px-4 pt-6 pb-4" style={{ background: "#14213D" }}>
         <Logo />
       </div>
 
-      {/* Main scroll area */}
       <main className="flex-1 min-w-0 overflow-y-auto">
         <InstallBanner />
         <div className={`${CONTENT_MAX_W[tab]} mx-auto px-4 md:px-8 py-4 md:py-8 pb-28 md:pb-10`}>
@@ -1012,16 +960,15 @@ export default function AIHospiceOS() {
           {tab === "reg" && <RegulatoryWatch />}
           {tab === "copilot" && <Copilot />}
 
-          <div className="md:hidden text-center text-[11px] font-mono mt-8" style={{ color: "#4A5F67" }}>
+          <div className="md:hidden text-center text-[11px] font-mono mt-8" style={{ color: "#8992A3" }}>
             Prototype — scores &amp; regulatory items are illustrative. Chart Review and Copilot call Claude live.
           </div>
         </div>
       </main>
 
-      {/* Mobile bottom nav — hidden on desktop */}
       <nav
         className="md:hidden fixed bottom-0 inset-x-0 flex items-stretch z-10"
-        style={{ background: "#162329", borderTop: "1px solid #2B3E45", paddingBottom: "env(safe-area-inset-bottom)" }}
+        style={{ background: "#14213D", borderTop: "1px solid #1E2C4E", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -1031,7 +978,7 @@ export default function AIHospiceOS() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium"
-              style={{ color: active ? "#C79A4D" : "#8FA3AA" }}
+              style={{ color: active ? "#B8863F" : "#93A0B8" }}
             >
               <Icon size={18} />
               {t.label.split(" ")[0]}
