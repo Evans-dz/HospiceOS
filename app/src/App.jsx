@@ -140,8 +140,8 @@ const EMPTY_DASHBOARD = {
 
 function Dashboard({ reportData }) {
   const [openId, setOpenId] = useState(null);
-  const hasData = reportData && reportData.agencyName;
-  const d = hasData ? reportData : null;
+  const hasData = (reportData && reportData.agencyName) || capData;
+  const d = hasData ? (reportData || { agencyName: capData?.agencyName, reportPeriod: capData?.capYear, categories: [], criticalFindings: [], psrMetrics: null, overallScore: null, overallRiskLevel: null, estimatedClawbackRisk: 0, capData: capData, ssviScore: null }) : null;
   const categories = d?.categories || [];
   const overall = d?.overallScore || 0;
   const metrics = d?.psrMetrics || {};
@@ -1140,12 +1140,13 @@ export default function AIHospiceOS() {
   const [capData, setCapData] = useState(null);
 
   // When CAP data comes in, merge into reportData if PSR already loaded
-  const handleCapData = (data) => {
-    setCapData(data);
-    if (reportData && data) {
-      setReportData(prev => ({ ...prev, capData: data }));
-    }
-  };
+ const handleCapData = (data) => {
+  setCapData(data);
+  if (reportData && data) {
+    setReportData(prev => ({ ...prev, capData: data }));
+  }
+  if (!reportData) setTab("dashboard");
+};
 
   // When PSR data comes in, merge existing CAP data
   const handleReportData = (data) => {
