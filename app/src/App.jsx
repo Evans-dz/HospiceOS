@@ -778,10 +778,14 @@ function UploadHub() {
     setPsrFile(f); setPsrResult(null); setPsrError(null); setPsrLoading(true);
     try {
       const text = await extractPDFText(f);
-      const raw = await callClaude(PSR_SYSTEM_PROMPT, `PS&R REPORT TEXT:\n\n${text}`, 3000);
-      setPsrResult(JSON.parse(stripJsonFence(raw)));
-    } catch (e) { setPsrError("Could not analyze PDF: " + e.message); }
-    finally { setPsrLoading(false); }
+      const raw = await callClaude(system, text, 1000);
+// More robust JSON extraction
+const jsonMatch = raw.match(/\{[\s\S]*\}/);
+if (!jsonMatch) throw new Error("No JSON found");
+setResult(JSON.parse(jsonMatch[0]));
+   } catch (e) {
+  setError("Analysis error: " + e.message);
+}
   };
 
   const handleCAP = async (f) => {
