@@ -885,16 +885,35 @@ function ChartReview() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [rawDebug, setRawDebug] = useState(null);
 
   const analyze = async () => {
     if (!text.trim()) return;
-    setLoading(true); setError(null); setResult(null);
+    setLoading(true); setError(null); setResult(null); setRawDebug(null);
     try {
-      const system = `You are the AI Clinical Chart Auditor inside AIHospiceOS. Audit the given chart text against Medicare Hospice Conditions of Participation: eligibility support, documentation consistency, signature/date completeness, and billing risk. Respond with ONLY valid JSON, no markdown fences: {"overallAssessment":"string","issues":[{"severity":"high|medium|low","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]}`;
+      const system = `You are the AI Clinical Chart Auditor inside AIHospiceOS. Audit the given chart text against Medicare Hospice Conditions of Participation: eligibility support, documentation consistency, signature/date completeness, and billing risk. You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no backticks, no text before or after. Start your response with { and end with }. Use exactly this shape: {"overallAssessment":"string","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]}`;
       const raw = await callClaude(system, text, 1000);
-      setResult(JSON.parse(stripJsonFence(raw)));
-    } catch (e) { setError("Could not parse the analysis. Try again."); }
-    finally { setLoading(false); }
+      setRawDebug(raw);
+      // Try multiple parse strategies
+      let parsed = null;
+      // Strategy 1: direct parse
+      try { parsed = JSON.parse(raw.trim()); } catch {}
+      // Strategy 2: strip fences
+      if (!parsed) {
+        try { parsed = JSON.parse(raw.replace(/```json/gi,"").replace(/```/g,"").trim()); } catch {}
+      }
+      // Strategy 3: extract first JSON object
+      if (!parsed) {
+        const match = raw.match(/\{[\s\S]*\}/);
+        if (match) { try { parsed = JSON.parse(match[0]); } catch {} }
+      }
+      if (!parsed) throw new Error("Could not parse JSON from: " + raw.substring(0, 200));
+      setResult(parsed);
+    } catch (e) {
+      setError("Error: " + e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -918,11 +937,23 @@ function ChartReview() {
             {loading ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
             {loading ? "Analyzing…" : "Analyze chart"}
           </button>
-          <button onClick={() => { setText(SAMPLE_CHART); setResult(null); }}
+          <button onClick={() => { setText(SAMPLE_CHART); setResult(null); setError(null); setRawDebug(null); }}
             className="text-xs underline" style={{ color: "#64708A" }}>Reset to sample</button>
         </div>
       </div>
-      {error && <div className="rounded-lg p-3 text-sm" style={{ background: "#FDECEA", color: "#B23A2E" }}>{error}</div>}
+
+      {error && (
+        <div className="rounded-lg p-3 text-sm font-mono" style={{ background: "#FDECEA", color: "#B23A2E" }}>
+          {error}
+        </div>
+      )}
+
+      {rawDebug && !result && (
+        <div className="rounded-lg p-3 text-xs font-mono" style={{ background: "#F5F6F8", color: "#64708A" }}>
+          Raw response: {rawDebug.substring(0, 300)}
+        </div>
+      )}
+
       {result && (
         <div className="rounded-2xl p-5 space-y-5" style={{ background: "#FFFFFF", border: "1px solid #E3E7ED" }}>
           <div>
