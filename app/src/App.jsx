@@ -778,7 +778,7 @@ function UploadHub() {
     setPsrFile(f); setPsrResult(null); setPsrError(null); setPsrLoading(true);
     try {
       const text = await extractPDFText(f);
-      const raw = await callClaude(system, text, 1000);
+      const raw = await callClaude(system, text, 2000);
 // More robust JSON extraction
 const jsonMatch = raw.match(/\{[\s\S]*\}/);
 if (!jsonMatch) throw new Error("No JSON found");
@@ -891,8 +891,8 @@ function ChartReview() {
     if (!text.trim()) return;
     setLoading(true); setError(null); setResult(null); setRawDebug(null);
     try {
-      const system = `You are the AI Clinical Chart Auditor inside AIHospiceOS. Audit the given chart text against Medicare Hospice Conditions of Participation: eligibility support, documentation consistency, signature/date completeness, and billing risk. You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no backticks, no text before or after. Start your response with { and end with }. Use exactly this shape: {"overallAssessment":"string","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]}`;
-      const raw = await callClaude(system, text, 1000);
+      const system = `You are a hospice compliance auditor. Audit this chart against Medicare Hospice CoP. Respond with ONLY valid JSON starting with { and ending with }. No other text. Use this exact format: {"overallAssessment":"2 sentence summary","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]} Maximum 3 issues and 2 strengths.`;
+      const raw = await callClaude(system, text, 2000);
       setRawDebug(raw);
       // Try multiple parse strategies
       let parsed = null;
