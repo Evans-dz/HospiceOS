@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, Clock, BookOpen, Loader2, Stethoscope,
   ClipboardList, Minus, Upload, DollarSign, AlertCircle, X,
   BarChart3, FileSearch, Calendar, Users, Lock, ArrowRight,
-  Home, PieChart, Eye, EyeOff,
+  Home, PieChart,
 } from "lucide-react";
 
 const FONT_IMPORT = `
@@ -41,7 +41,6 @@ function parseJSON(raw) {
 const statusColor = (s) => s === "good" ? "#2E9E62" : s === "warn" ? "#C98A1F" : "#D14343";
 const severityColor = (s) => s === "high" ? "#D14343" : s === "medium" ? "#C98A1F" : "#2E9E62";
 const scoreColor = (s) => s >= 85 ? "#2E9E62" : s >= 70 ? "#C98A1F" : "#D14343";
-// SSVI: lower is better (0-16 scale)
 const ssviColor = (s) => s <= 4 ? "#2E9E62" : s <= 7 ? "#C98A1F" : "#D14343";
 const ssviLabel = (s) => s <= 4 ? "Low Risk" : s <= 7 ? "Moderate Risk" : "High Risk";
 
@@ -63,7 +62,6 @@ function ScoreRing({ score, size = 84, stroke = 8 }) {
   );
 }
 
-// SSVI ring — inverted (lower = better, 0-16 scale)
 function SSVIRing({ score, size = 84, stroke = 8 }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -116,37 +114,17 @@ function RiskBadge({ level, clawback }) {
   );
 }
 
-// ─── GLOBAL REPORT STATE ─────────────────────────────────────────────────────
-// Shared across Dashboard and Upload Hub via props
-
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-const EMPTY_DASHBOARD = {
-  agencyName: null,
-  overallScore: null,
-  overallRiskLevel: null,
-  estimatedClawbackRisk: 0,
-  totalReimbursement: 0,
-  psrMetrics: null,
-  categories: [],
-  criticalFindings: [],
-  capData: null,
-  ssviScore: null,
-  ssviUtilizationScore: null,
-  ssviSpendingScore: null,
-  ssviRiskLevel: null,
-  ssviFindings: [],
-  reportPeriod: null,
-};
-
 function Dashboard({ reportData }) {
   const [openId, setOpenId] = useState(null);
-  const hasData = (reportData && reportData.agencyName) || capData;
-  const d = hasData ? (reportData || { agencyName: capData?.agencyName, reportPeriod: capData?.capYear, categories: [], criticalFindings: [], psrMetrics: null, overallScore: null, overallRiskLevel: null, estimatedClawbackRisk: 0, capData: capData, ssviScore: null }) : null;
+
+  const hasData = reportData && (reportData.agencyName || reportData.capData);
+  const d = hasData ? reportData : null;
   const categories = d?.categories || [];
-  const overall = d?.overallScore || 0;
   const metrics = d?.psrMetrics || {};
   const cap = d?.capData || null;
   const ssvi = d?.ssviScore != null ? d.ssviScore : null;
+  const overall = d?.overallScore || 0;
 
   if (!hasData) {
     return (
@@ -178,51 +156,55 @@ function Dashboard({ reportData }) {
   return (
     <div className="space-y-6">
       {/* Main scorecard */}
-      <div className="rounded-2xl p-6"
-        style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-        <div className="flex items-start gap-5 flex-wrap">
-          <ScoreRing score={overall} size={104} stroke={9} />
-          <div className="flex-1 min-w-0">
-            <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
-              Composite Compliance Index
-            </div>
-            <div className="text-2xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
-              {d.agencyName}
-            </div>
-            <div className="text-sm mt-1 font-mono" style={{ color: "#64708A" }}>
-              Report Period: {d.reportPeriod}
-            </div>
-            <div className="mt-2">
-              <RiskBadge level={d.overallRiskLevel} clawback={d.estimatedClawbackRisk} />
+      {d.agencyName && (
+        <div className="rounded-2xl p-6"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-start gap-5 flex-wrap">
+            {overall > 0 && <ScoreRing score={overall} size={104} stroke={9} />}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
+                Composite Compliance Index
+              </div>
+              <div className="text-2xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
+                {d.agencyName}
+              </div>
+              <div className="text-sm mt-1 font-mono" style={{ color: "#64708A" }}>
+                Report Period: {d.reportPeriod}
+              </div>
+              {d.overallRiskLevel && (
+                <div className="mt-2">
+                  <RiskBadge level={d.overallRiskLevel} clawback={d.estimatedClawbackRisk} />
+                </div>
+              )}
             </div>
           </div>
+          {categories.length > 0 && (
+            <div className="w-full flex flex-wrap gap-3 pt-5 mt-4 border-t" style={{ borderColor: "#E3E7ED" }}>
+              {categories.map((c) => (
+                <button key={c.id} onClick={() => setOpenId(openId === c.id ? null : c.id)}
+                  className="text-left rounded-lg px-3 py-2 transition-colors"
+                  style={{
+                    background: openId === c.id ? "#F7F0E1" : "transparent",
+                    border: `1px solid ${openId === c.id ? "#E8CFA0" : "#E3E7ED"}`,
+                    flex: "1 1 150px", minWidth: 0,
+                  }}>
+                  <div className="text-[11px] font-mono" style={{ color: "#64708A" }}>{c.label}</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-mono" style={{ color: scoreColor(c.score) }}>{c.score}</span>
+                    {c.clawbackAmount > 0 && (
+                      <span className="text-[11px] font-mono" style={{ color: "#D14343" }}>
+                        ⚠ ${Number(c.clawbackAmount).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+      )}
 
-        {/* Score pills */}
-        <div className="w-full flex flex-wrap gap-3 pt-5 mt-4 border-t" style={{ borderColor: "#E3E7ED" }}>
-          {categories.map((c) => (
-            <button key={c.id} onClick={() => setOpenId(openId === c.id ? null : c.id)}
-              className="text-left rounded-lg px-3 py-2 transition-colors"
-              style={{
-                background: openId === c.id ? "#F7F0E1" : "transparent",
-                border: `1px solid ${openId === c.id ? "#E8CFA0" : "#E3E7ED"}`,
-                flex: "1 1 150px", minWidth: 0,
-              }}>
-              <div className="text-[11px] font-mono" style={{ color: "#64708A" }}>{c.label}</div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-lg font-mono" style={{ color: scoreColor(c.score) }}>{c.score}</span>
-                {c.clawbackAmount > 0 && (
-                  <span className="text-[11px] font-mono" style={{ color: "#D14343" }}>
-                    ⚠ ${Number(c.clawbackAmount).toLocaleString()}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* SSVI Score Block */}
+      {/* SSVI Score */}
       {ssvi != null && (
         <div className="rounded-2xl p-6"
           style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
@@ -230,7 +212,7 @@ function Dashboard({ reportData }) {
             <SSVIRing score={ssvi} size={96} stroke={9} />
             <div className="flex-1 min-w-0">
               <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
-                SSVI — Service & Spending Variation Index
+                SSVI — Service &amp; Spending Variation Index
               </div>
               <div className="text-xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
                 {ssviLabel(ssvi)} · Score {ssvi}/16
@@ -259,7 +241,7 @@ function Dashboard({ reportData }) {
               style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
               <AlertTriangle size={16} color="#D14343" className="shrink-0 mt-0.5" />
               <div className="text-sm" style={{ color: "#B23A2E" }}>
-                <strong>High SSVI Score Warning:</strong> Scores ≥10 signal meaningful deviation from CMS peer norms on both spending and utilization. CMS posts provider-level SSVI scores publicly on the Hospice Center webpage. Facilities with high scores may be subject to additional program integrity review.
+                <strong>High SSVI Score Warning:</strong> Scores ≥10 signal meaningful deviation from CMS peer norms. CMS posts provider-level SSVI scores publicly. Facilities with high scores may be subject to additional program integrity review and potential referral to law enforcement.
               </div>
             </div>
           )}
@@ -327,6 +309,29 @@ function Dashboard({ reportData }) {
               </div>
             </div>
           )}
+          {cap.findings?.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#64708A" }}>CAP Findings</div>
+              {cap.findings.map((f, i) => (
+                <div key={i} className="flex gap-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
+                  <span className="text-[10px] uppercase font-mono px-2 py-1 rounded shrink-0 h-fit"
+                    style={{ background: severityColor(f.severity) + "1A", color: severityColor(f.severity) }}>
+                    {f.severity}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm" style={{ color: "#16202E" }}>{f.finding}</div>
+                    <div className="text-sm mt-1" style={{ color: "#64708A" }}>→ {f.recommendation}</div>
+                    {f.dollarImpact > 0 && (
+                      <div className="mt-1.5 inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded"
+                        style={{ background: "#FDECEA", color: "#D14343" }}>
+                        <DollarSign size={11} />${Number(f.dollarImpact).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -336,7 +341,7 @@ function Dashboard({ reportData }) {
           style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 size={16} color="#B8863F" />
-            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">PS&R Key Metrics</span>
+            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">PS&amp;R Key Metrics</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
@@ -456,7 +461,6 @@ function Dashboard({ reportData }) {
         </div>
       )}
 
-      {/* Recert Tracker */}
       <RecertificationTracker />
     </div>
   );
@@ -485,88 +489,26 @@ async function extractPDFText(file) {
   return text;
 }
 
-// ─── PS&R PROMPTS — SPLIT INTO TWO CALLS ────────────────────────────────────
+// ─── PROMPTS ──────────────────────────────────────────────────────────────────
 const PSR_PROMPT_1 = `You are a Medicare hospice compliance analyst. Extract key metrics from this PS&R report and score 4 categories. Be extremely concise. Respond with ONLY valid JSON starting with { and ending with }. No other text.
 
-{
-  "agencyName": "string",
-  "reportPeriod": "string",
-  "totalReimbursement": number,
-  "estimatedClawbackRisk": number,
-  "psrMetrics": {
-    "capUtilizationPct": number or null,
-    "gipRatioPct": number or null,
-    "liveDischargePct": number or null,
-    "avgLengthOfStay": number or null,
-    "totalPatientDays": number or null,
-    "routineHomeCareRatioPct": number or null,
-    "avgRnVisitMinutes": number or null,
-    "continuousCareRatioPct": number or null
-  },
-  "overallScore": number 0-100,
-  "overallRiskLevel": "high|medium|low",
-  "ssviScore": number 0-16,
-  "ssviUtilizationScore": number 0-8,
-  "ssviSpendingScore": number 0-8,
-  "ssviRiskLevel": "high|medium|low",
-  "ssviFindings": [
-    { "measure": "string", "detail": "string", "status": "good|warn|risk" }
-  ],
-  "categories": [
-    {
-      "id": "string", "label": "string", "score": number, "clawbackAmount": number,
-      "auditReason": "string", "summary": "string under 15 words",
-      "factors": [{"weight": number, "label": "string", "status": "good|warn|risk", "detail": "string under 15 words"}],
-      "actions": ["string under 15 words"]
-    }
-  ]
-}
+{"agencyName":"string","reportPeriod":"string","totalReimbursement":number,"estimatedClawbackRisk":number,"psrMetrics":{"capUtilizationPct":number_or_null,"gipRatioPct":number_or_null,"liveDischargePct":number_or_null,"avgLengthOfStay":number_or_null,"totalPatientDays":number_or_null,"routineHomeCareRatioPct":number_or_null,"avgRnVisitMinutes":number_or_null,"continuousCareRatioPct":number_or_null},"overallScore":number,"overallRiskLevel":"high|medium|low","ssviScore":number,"ssviUtilizationScore":number,"ssviSpendingScore":number,"ssviRiskLevel":"high|medium|low","ssviFindings":[{"measure":"string","detail":"string","status":"good|warn|risk"}],"categories":[{"id":"string","label":"string","score":number,"clawbackAmount":number,"auditReason":"string","summary":"string","factors":[{"weight":number,"label":"string","status":"good|warn|risk","detail":"string"}],"actions":["string"]}]}
 
-Score these 4 categories: cap_utilization (label: Cap Utilization), level_of_care_mix (label: Level of Care Mix), live_discharge (label: Live Discharge Rate), rn_visit_length (label: RN Visit Intensity).
-Max 2 factors per category. Max 1 action per category.
-SSVI scoring: utilization score based on live discharge rate, LOS over 180 days, RN visit minutes, GIP ratio. Higher SSVI = worse. National average is 6.42.
-Flag GIP over 10% as risk. Live discharge over 20% as risk. RN visits under 35 min as risk. Cap over 80% as warn, over 100% as risk.`;
+Score these 4 categories: cap_utilization, level_of_care_mix, live_discharge, rn_visit_length. Max 2 factors per category. Max 1 action per category. SSVI 0-16, higher is worse, national average 6.42. Flag GIP over 10% as risk, live discharge over 20% as risk, RN visits under 35 min as risk, cap over 80% as warn.`;
 
-const PSR_PROMPT_2 = `You are a Medicare hospice compliance analyst. Score 3 more categories and generate critical findings from this PS&R report. Be extremely concise. Respond with ONLY valid JSON starting with { and ending with }. No other text.
+const PSR_PROMPT_2 = `You are a Medicare hospice compliance analyst. Score 3 more categories and generate critical findings. Be extremely concise. Respond with ONLY valid JSON starting with { and ending with }. No other text.
 
-{
-  "categories": [
-    {
-      "id": "string", "label": "string", "score": number, "clawbackAmount": number,
-      "auditReason": "string", "summary": "string under 15 words",
-      "factors": [{"weight": number, "label": "string", "status": "good|warn|risk", "detail": "string under 15 words"}],
-      "actions": ["string under 15 words"]
-    }
-  ],
-  "criticalFindings": [
-    {"severity": "high|medium|low", "category": "string", "finding": "string under 20 words", "recommendation": "string under 15 words", "clawbackRisk": number}
-  ]
-}
+{"categories":[{"id":"string","label":"string","score":number,"clawbackAmount":number,"auditReason":"string","summary":"string","factors":[{"weight":number,"label":"string","status":"good|warn|risk","detail":"string"}],"actions":["string"]}],"criticalFindings":[{"severity":"high|medium|low","category":"string","finding":"string","recommendation":"string","clawbackRisk":number}]}
 
-Score these 3 categories: billing_accuracy (label: Billing Accuracy), survey_readiness (label: Survey Readiness), length_of_stay (label: Length of Stay).
-Max 2 factors per category. Max 1 action per category. Max 3 criticalFindings total.
-Use authentic jargon: MAC/RAC audits, LCD guidelines, FAST scale, face-to-face encounter, GIP, cap aggregate, CoP, HIS measures.`;
+Score: billing_accuracy, survey_readiness, length_of_stay. Max 2 factors each. Max 3 criticalFindings. Use jargon: MAC/RAC, LCD guidelines, FAST scale, face-to-face, GIP, cap aggregate, CoP, HIS.`;
 
-const CAP_PROMPT = `You are a Medicare hospice CAP specialist. Extract cap data from this report. Be concise. Respond with ONLY valid JSON starting with { and ending with }. No other text.
+const CAP_PROMPT = `You are a Medicare hospice CAP specialist. Extract cap data. Respond with ONLY valid JSON starting with { and ending with }. No other text.
 
-{
-  "agencyName": "string",
-  "capYear": "string",
-  "totalMedicareReimbursement": number,
-  "capAmount": number,
-  "capUtilizationPct": number,
-  "overCapAmount": number,
-  "projectedYearEndUtilization": number,
-  "riskLevel": "high|medium|low",
-  "totalBeneficiaries": number,
-  "findings": [
-    {"severity": "high|medium|low", "finding": "string under 20 words", "recommendation": "string under 15 words", "dollarImpact": number}
-  ]
-}
+{"agencyName":"string","capYear":"string","totalMedicareReimbursement":number,"capAmount":number,"capUtilizationPct":number,"overCapAmount":number,"projectedYearEndUtilization":number,"riskLevel":"high|medium|low","totalBeneficiaries":number,"findings":[{"severity":"high|medium|low","finding":"string","recommendation":"string","dollarImpact":number}]}
 
-If cap utilization exceeds 100%, riskLevel must be high. Between 85-100% is medium. Under 85% is low. Max 3 findings.`;
+Cap over 100% = high risk. 85-100% = medium. Under 85% = low. Max 3 findings.`;
 
-// ─── UPLOAD HUB ───────────────────────────────────────────────────────────────
+// ─── UPLOAD ZONE ──────────────────────────────────────────────────────────────
 function UploadZone({ label, description, icon: Icon, onFile, loading, result, comingSoon }) {
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef();
@@ -617,7 +559,7 @@ function UploadZone({ label, description, icon: Icon, onFile, loading, result, c
           Analyzing with AI — this may take 30-60 seconds…
         </div>
       )}
-      {result && <div className="text-xs font-mono" style={{ color: "#2E9E62" }}>✓ Analysis complete — view results on Dashboard</div>}
+      {result && <div className="text-xs font-mono" style={{ color: "#2E9E62" }}>✓ Analysis complete — view on Dashboard</div>}
       {!loading && !result && (
         <div className="text-xs font-mono px-3 py-1 rounded-full" style={{ background: "#F7F0E1", color: "#B8863F" }}>
           Drop PDF here or click to browse
@@ -627,30 +569,23 @@ function UploadZone({ label, description, icon: Icon, onFile, loading, result, c
   );
 }
 
+// ─── UPLOAD HUB ───────────────────────────────────────────────────────────────
 function UploadHub({ onReportData, onCapData, reportData, capData }) {
   const [psrLoading, setPsrLoading] = useState(false);
   const [psrError, setPsrError] = useState(null);
   const [capLoading, setCapLoading] = useState(false);
   const [capError, setCapError] = useState(null);
-  const [psrFile, setPsrFile] = useState(null);
-  const [capFile, setCapFile] = useState(null);
 
   const handlePSR = async (f) => {
     if (!f || f.type !== "application/pdf") { setPsrError("Please upload a PDF file."); return; }
-    setPsrFile(f); setPsrError(null); setPsrLoading(true);
+    setPsrError(null); setPsrLoading(true);
     try {
       const text = await extractPDFText(f);
       const truncated = text.substring(0, 4000);
-
-      // Call 1 — metrics, SSVI, first 4 categories
       const raw1 = await callClaude(PSR_PROMPT_1, `PS&R REPORT:\n\n${truncated}`, 1500);
       const part1 = parseJSON(raw1);
-
-      // Call 2 — remaining 3 categories + critical findings
       const raw2 = await callClaude(PSR_PROMPT_2, `PS&R REPORT:\n\n${truncated}`, 1200);
       const part2 = parseJSON(raw2);
-
-      // Merge results
       const merged = {
         ...part1,
         categories: [...(part1.categories || []), ...(part2.categories || [])],
@@ -667,16 +602,12 @@ function UploadHub({ onReportData, onCapData, reportData, capData }) {
 
   const handleCAP = async (f) => {
     if (!f || f.type !== "application/pdf") { setCapError("Please upload a PDF file."); return; }
-    setCapFile(f); setCapError(null); setCapLoading(true);
+    setCapError(null); setCapLoading(true);
     try {
       const text = await extractPDFText(f);
       const raw = await callClaude(CAP_PROMPT, `CAP REPORT:\n\n${text.substring(0, 3000)}`, 1000);
       const result = parseJSON(raw);
       onCapData(result);
-      // Also update dashboard capData if PSR already loaded
-      if (reportData) {
-        onReportData({ ...reportData, capData: result });
-      }
     } catch (e) {
       setCapError("Analysis error: " + e.message);
     } finally {
@@ -697,8 +628,8 @@ function UploadHub({ onReportData, onCapData, reportData, capData }) {
         <div className="rounded-xl p-4 flex items-center gap-3"
           style={{ background: "#EAF6EF", border: "1px solid #A8DFC0" }}>
           <CheckCircle2 size={18} color="#2E9E62" className="shrink-0" />
-          <div className="text-sm" style={{ color: "#1A6E41" }}>
-            <strong>Reports loaded.</strong> Your Dashboard is now populated with live data from your uploaded reports. Switch to the Dashboard tab to view your full compliance scorecard.
+          <div className="text-sm flex-1" style={{ color: "#1A6E41" }}>
+            <strong>Reports loaded.</strong> Switch to the Dashboard tab to view your full compliance scorecard.
           </div>
         </div>
       )}
@@ -742,19 +673,19 @@ function UploadHub({ onReportData, onCapData, reportData, capData }) {
         </div>
       </div>
 
-      {reportData && (
+      {(reportData || capData) && (
         <div className="rounded-2xl p-4" style={{ background: "#F5F6F8", border: "1px solid #E3E7ED" }}>
           <div className="text-xs font-mono mb-2" style={{ color: "#64708A" }}>Clear uploaded data</div>
           <div className="flex gap-3">
             {reportData && (
-              <button onClick={() => { onReportData(null); setPsrFile(null); }}
+              <button onClick={() => onReportData(null)}
                 className="text-xs font-mono px-3 py-1.5 rounded-lg"
                 style={{ background: "#FDECEA", color: "#D14343", border: "1px solid #F3B8AC" }}>
                 Clear PS&R Data
               </button>
             )}
             {capData && (
-              <button onClick={() => { onCapData(null); setCapFile(null); }}
+              <button onClick={() => onCapData(null)}
                 className="text-xs font-mono px-3 py-1.5 rounded-lg"
                 style={{ background: "#FDECEA", color: "#D14343", border: "1px solid #F3B8AC" }}>
                 Clear CAP Data
@@ -853,7 +784,7 @@ function ChartReview() {
     if (!text.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const system = `You are a hospice compliance auditor. Audit this chart against Medicare Hospice CoP. Respond with ONLY valid JSON starting with { and ending with }. No other text. Use this exact format: {"overallAssessment":"2 sentence summary","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]} Maximum 3 issues and 2 strengths.`;
+      const system = `You are a hospice compliance auditor. Audit this chart against Medicare Hospice CoP. Respond with ONLY valid JSON starting with { and ending with }. No other text. Format: {"overallAssessment":"2 sentence summary","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]} Maximum 3 issues and 2 strengths.`;
       const raw = await callClaude(system, text, 2000);
       setResult(parseJSON(raw));
     } catch (e) {
@@ -941,9 +872,9 @@ const REG_UPDATES = [
     checklist:["Update the intake SOP so the addendum request trigger fires at election.","Retrain admissions staff on the 3-day window.","Audit the last 30 days of elections for addendum timing gaps."] },
   { id:"r2", date:"2026-06-10", source:"CMS", tag:"Payment / Billing", severity:"high",
     title:"FY2027 Hospice Proposed Rule — SSVI introduced as public scoring tool",
-    summary:"CMS introduced the Service & Spending Variation Index (SSVI), a 0-16 composite score built from claims data flagging agencies whose care patterns and Medicare spending diverge from peer norms. Scores are posted publicly on the CMS Hospice Center webpage.",
-    impact:"A score of 10 or above signals meaningful deviation and may trigger additional program integrity review. CMS Administrator Dr. Oz framed this as a tool to identify misuse of Medicare dollars and refer agencies to law enforcement.",
-    checklist:["Pull your agency's SSVI score from the CMS Hospice Center webpage.","Review your live discharge rate, LOS over 180 days, RN visit minutes, and non-hospice spending.","Brief your compliance team on the 9 SSVI measures before the final rule.","Upload your PS&R to AIHospiceOS to estimate your SSVI exposure."] },
+    summary:"CMS introduced the Service & Spending Variation Index (SSVI), a 0-16 composite score built from claims data flagging agencies whose care patterns diverge from peer norms. Scores are posted publicly on the CMS Hospice Center webpage.",
+    impact:"A score of 10 or above signals meaningful deviation and may trigger additional program integrity review. CMS Administrator Dr. Oz framed this as a tool to identify misuse of Medicare dollars.",
+    checklist:["Pull your agency SSVI score from the CMS Hospice Center webpage.","Review your live discharge rate, LOS over 180 days, RN visit minutes, and non-hospice spending.","Upload your PS&R to AIHospiceOS to estimate your SSVI exposure.","Brief your compliance team on the 9 SSVI measures before the final rule."] },
   { id:"r3", date:"2026-05-14", source:"OIG", tag:"Program Integrity", severity:"medium",
     title:"OIG work plan adds hospice GIP level-of-care review",
     summary:"The OIG added a work plan item focused on GIP level-of-care determinations — reviewing whether documentation supports the acuity required for GIP billing.",
@@ -952,8 +883,8 @@ const REG_UPDATES = [
   { id:"r4", date:"2026-04-30", source:"CMS", tag:"Survey / Oversight", severity:"medium",
     title:"CMS posts provider-level SSVI scores publicly on Hospice Center webpage",
     summary:"Provider-level SSVI data for FY2024 and FY2025 is now publicly available. The FY2025 average was 6.42 with a median of 7. Only 4 hospices scored a perfect 0. 833 hospices (12.5%) scored 10 or above.",
-    impact:"Referral sources, families, and payers can now see your agency's SSVI score. High scores are visible to anyone researching your agency.",
-    checklist:["Look up your agency's published SSVI score on the CMS Hospice Center webpage.","If your score is 8 or above, develop a remediation plan before the next reporting cycle.","Document your response to any SSVI outlier measures in your QAPI program."] },
+    impact:"Referral sources, families, and payers can now see your agency SSVI score. High scores are visible to anyone researching your agency.",
+    checklist:["Look up your agency SSVI score on the CMS Hospice Center webpage.","If your score is 8 or above, develop a remediation plan before the next reporting cycle.","Document your response to any SSVI outlier measures in your QAPI program."] },
 ];
 
 function RegulatoryWatch() {
@@ -1018,7 +949,7 @@ function RegulatoryWatch() {
   );
 }
 
-// ─── COPILOT (hidden from nav but kept in code) ───────────────────────────────
+// ─── COPILOT (hidden from nav, kept in code) ──────────────────────────────────
 function Copilot() {
   const [messages, setMessages] = useState([
     { role: "assistant", text: "I'm your compliance copilot. Ask me about PS&R scores, SSVI thresholds, CAP exposure, MAC/RAC audit risk, or what any survey tag means." },
@@ -1035,7 +966,7 @@ function Copilot() {
     setMessages((m) => [...m, { role: "user", text: q }]);
     setLoading(true);
     try {
-      const system = `You are the AI Compliance Copilot inside AIHospiceOS for hospice CEOs, owners, and Directors of Clinical Services. Answer hospice regulatory, PS&R, CAP, SSVI scoring, MAC/RAC audit, and clinical documentation questions clearly. Reference Medicare Hospice Conditions of Participation, LCD guidelines, FAST scale, cap aggregate, and SSVI measures where relevant. Keep answers under 150 words, conversational but precise.`;
+      const system = `You are the AI Compliance Copilot inside AIHospiceOS for hospice CEOs, owners, and Directors of Clinical Services. Answer hospice regulatory, PS&R, CAP, SSVI scoring, MAC/RAC audit, and clinical documentation questions clearly for an executive audience. Keep answers under 150 words, conversational but precise.`;
       const reply = await callClaude(system, q, 500);
       setMessages((m) => [...m, { role: "assistant", text: reply.trim() }]);
     } catch (e) {
@@ -1085,7 +1016,6 @@ function Copilot() {
 }
 
 // ─── NAV & SHELL ──────────────────────────────────────────────────────────────
-// Copilot kept in code but hidden from nav
 const TABS = [
   { id: "dashboard", label: "Dashboard", icon: Home },
   { id: "upload", label: "Report Upload", icon: Upload },
@@ -1134,29 +1064,50 @@ function InstallBanner() {
   );
 }
 
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function AIHospiceOS() {
   const [tab, setTab] = useState("dashboard");
   const [reportData, setReportData] = useState(null);
   const [capData, setCapData] = useState(null);
 
-  // When CAP data comes in, merge into reportData if PSR already loaded
- const handleCapData = (data) => {
-  setCapData(data);
-  if (reportData && data) {
-    setReportData(prev => ({ ...prev, capData: data }));
-  }
-  if (!reportData) setTab("dashboard");
-};
-
-  // When PSR data comes in, merge existing CAP data
-  const handleReportData = (data) => {
-    if (data && capData) {
-      setReportData({ ...data, capData });
+  const handleCapData = (data) => {
+    setCapData(data);
+    if (data) {
+      if (reportData) {
+        setReportData(prev => ({ ...prev, capData: data }));
+      } else {
+        // CAP only — create minimal report object so dashboard renders
+        setReportData({
+          agencyName: data.agencyName,
+          reportPeriod: data.capYear,
+          categories: [],
+          criticalFindings: [],
+          psrMetrics: null,
+          overallScore: null,
+          overallRiskLevel: null,
+          estimatedClawbackRisk: 0,
+          capData: data,
+          ssviScore: null,
+        });
+      }
+      setTab("dashboard");
     } else {
-      setReportData(data);
+      // Clearing CAP — if no PSR either, clear everything
+      if (!reportData || !reportData.psrMetrics) setReportData(null);
+      else setReportData(prev => ({ ...prev, capData: null }));
     }
-    if (data) setTab("dashboard");
   };
+
+  const handleReportData = (data) => {
+    if (data) {
+      setReportData({ ...data, capData: capData || null });
+      setTab("dashboard");
+    } else {
+      setReportData(null);
+    }
+  };
+
+  const dashboardData = reportData ? { ...reportData, capData: capData || reportData.capData } : null;
 
   return (
     <div style={{ background: "#F5F6F8", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}
@@ -1178,13 +1129,13 @@ export default function AIHospiceOS() {
             );
           })}
         </nav>
-        {reportData && (
+        {dashboardData && (
           <div className="mt-4 rounded-lg px-3 py-2" style={{ background: "#1E2C4E" }}>
             <div className="text-[11px] font-mono" style={{ color: "#93A0B8" }}>Loaded agency</div>
-            <div className="text-xs font-medium mt-0.5 truncate" style={{ color: "#F3F5F8" }}>{reportData.agencyName}</div>
-            {reportData.ssviScore != null && (
-              <div className="text-[11px] font-mono mt-1" style={{ color: ssviColor(reportData.ssviScore) }}>
-                SSVI: {reportData.ssviScore}/16 · {ssviLabel(reportData.ssviScore)}
+            <div className="text-xs font-medium mt-0.5 truncate" style={{ color: "#F3F5F8" }}>{dashboardData.agencyName}</div>
+            {dashboardData.ssviScore != null && (
+              <div className="text-[11px] font-mono mt-1" style={{ color: ssviColor(dashboardData.ssviScore) }}>
+                SSVI: {dashboardData.ssviScore}/16 · {ssviLabel(dashboardData.ssviScore)}
               </div>
             )}
           </div>
@@ -1201,7 +1152,7 @@ export default function AIHospiceOS() {
       <main className="flex-1 min-w-0 overflow-y-auto">
         <InstallBanner />
         <div className={`${CONTENT_MAX_W[tab] || "max-w-5xl"} mx-auto px-4 md:px-8 py-4 md:py-8 pb-28 md:pb-10`}>
-          {tab === "dashboard" && <Dashboard reportData={reportData} />}
+          {tab === "dashboard" && <Dashboard reportData={dashboardData} />}
           {tab === "upload" && (
             <UploadHub
               onReportData={handleReportData}
