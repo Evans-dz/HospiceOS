@@ -19,14 +19,19 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: body.model || "claude-sonnet-4-6",
-        max_tokens: body.max_tokens || 1500,
+        max_tokens: body.max_tokens || 4000,
         system: body.system || "",
         messages: body.messages || [],
       }),
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: `Anthropic API error: ${errorText}` });
+    }
+
     const data = await response.json();
-    return res.status(response.status).json(data);
+    return res.status(200).json(data);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
