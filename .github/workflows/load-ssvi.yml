@@ -1,12 +1,11 @@
 name: Load CMS SSVI Data into Supabase
 
 on:
-  workflow_dispatch: # Manual trigger only — you click "Run workflow" in GitHub
+  workflow_dispatch:
 
 jobs:
   load-ssvi:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -17,8 +16,8 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-       run: npm install xlsx node-fetch@2 @supabase/supabase-js adm-zip ws
-       
+        run: npm install xlsx node-fetch@2 @supabase/supabase-js adm-zip ws
+
       - name: Download and parse CMS SSVI data
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
