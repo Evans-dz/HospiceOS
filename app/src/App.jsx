@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Activity, FileText, ShieldCheck, MessageSquare, AlertTriangle,
+  FileText, ShieldCheck, MessageSquare, AlertTriangle,
   CheckCircle2, ChevronDown, ChevronRight, Send, Sparkles,
   TrendingUp, TrendingDown, Clock, BookOpen, Loader2,
   Minus, Upload, DollarSign, AlertCircle, X,
-  BarChart3, Calendar, Lock, ArrowRight,
-  Home, PieChart, Info,
+  BarChart3, Calendar, ArrowRight,
+  Home, PieChart, ExternalLink, Files,
 } from "lucide-react";
 
 const FONT_IMPORT = `
@@ -39,20 +39,30 @@ function parseJSON(raw) {
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) { try { parsed = JSON.parse(m[0]); } catch {} }
   }
-  if (!parsed) throw new Error("Could not parse JSON from response");
+  if (!parsed) throw new Error("Could not parse JSON");
   return parsed;
 }
 
-const statusColor = (s) => s === "good" ? "#2E9E62" : s === "warn" ? "#C98A1F" : "#D14343";
 const severityColor = (s) => s === "high" ? "#D14343" : s === "medium" ? "#C98A1F" : "#2E9E62";
 const scoreColor = (s) => s >= 85 ? "#2E9E62" : s >= 70 ? "#C98A1F" : "#D14343";
 const ssviColor = (s) => s <= 4 ? "#2E9E62" : s <= 7 ? "#C98A1F" : "#D14343";
 const ssviLabel = (s) => s <= 4 ? "Low Risk" : s <= 7 ? "Moderate Risk" : "High Risk";
+const statusColor = (s) => s === "good" ? "#2E9E62" : s === "warn" ? "#C98A1F" : "#D14343";
 
-// Per-beneficiary cap amounts by fiscal year
 const CAP_AMOUNTS = {
   2023: 32486.92, 2024: 33494.01, 2025: 34159.74, 2026: 34738.63, 2027: 35000.00
 };
+
+const REPORT_TYPES = [
+  { id: "psr", label: "PS&R Summary", desc: "Report Type 810 — Provider Summary Report", color: "#B8863F" },
+  { id: "beneficiary", label: "Beneficiary Count", desc: "Report B51562 — Required for CAP calculation", color: "#B8863F" },
+  { id: "pepper", label: "PEPPER Report", desc: "Program for Evaluating Payment Patterns Electronic Report", color: "#6B7FD4" },
+  { id: "cahps", label: "CAHPS Survey", desc: "Consumer Assessment of Healthcare Providers and Systems", color: "#6B7FD4" },
+  { id: "qapi", label: "QAPI Documents", desc: "Quality Assurance & Performance Improvement program docs", color: "#2E9E62" },
+  { id: "policy", label: "Policy Manuals", desc: "Agency policy and procedure manuals", color: "#2E9E62" },
+  { id: "survey", label: "Survey Results", desc: "State survey findings, deficiency citations, POC documents", color: "#D14343" },
+  { id: "cms_public", label: "CMS Public Data", desc: "Hospice Compare data, SSVI public scores, quality measures", color: "#64708A" },
+];
 
 function ScoreRing({ score, size = 84, stroke = 8 }) {
   const r = (size - stroke) / 2;
@@ -124,407 +134,6 @@ function RiskBadge({ level, clawback }) {
   );
 }
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────────
-function Dashboard({ psrData, capData }) {
-  const [openId, setOpenId] = useState(null);
-  const hasAnyData = psrData || capData;
-
-  if (!hasAnyData) {
-    return (
-      <div className="space-y-6">
-        <div className="rounded-2xl p-12 flex flex-col items-center justify-center gap-4 text-center"
-          style={{ background: "#FFFFFF", border: "2px dashed #C7CDD8" }}>
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#F7F0E1" }}>
-            <Upload size={28} color="#B8863F" />
-          </div>
-          <div style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-2xl">
-            No reports uploaded yet
-          </div>
-          <p className="text-sm max-w-md" style={{ color: "#64708A" }}>
-            Upload your PS&R Summary Report (Report Type 810) and/or Beneficiary Count Summary from your CMS CASPER portal to populate your compliance dashboard.
-          </p>
-          <div className="flex gap-3 mt-2 flex-wrap justify-center">
-            {["PS&R Report Type 810", "Beneficiary Count Summary", "SSVI Scoring"].map((item) => (
-              <span key={item} className="text-xs font-mono px-3 py-1.5 rounded-full"
-                style={{ background: "#F5F6F8", color: "#64708A", border: "1px solid #E3E7ED" }}>
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const agencyName = psrData?.agencyName || capData?.agencyName || "Unknown Agency";
-  const categories = psrData?.categories || [];
-  const criticalFindings = psrData?.criticalFindings || [];
-  const metrics = psrData?.psrMetrics || {};
-  const ssvi = psrData?.ssviScore ?? null;
-
-  // Calculate CAP exposure using real beneficiary counts if available
-  const capYear = capData?.capYear || psrData?.mostRecentYear || "2026";
-  const capPerBeneficiary = CAP_AMOUNTS[parseInt(capYear)] || 34738.63;
-  const totalBeneficiaries = capData?.totalBeneficiaryCount || psrData?.totalBeneficiaryCount || null;
-  const netReimbursement = psrData?.netReimbursement || capData?.totalMedicareReimbursement || 0;
-  const capLimit = totalBeneficiaries ? totalBeneficiaries * capPerBeneficiary : null;
-  const capExposure = capLimit ? Math.max(0, netReimbursement - capLimit) : null;
-  const capUtilizationPct = capLimit ? ((netReimbursement / capLimit) * 100).toFixed(1) : null;
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="rounded-2xl p-6"
-        style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-        <div className="flex items-start gap-5 flex-wrap">
-          {psrData?.overallScore > 0 && <ScoreRing score={psrData.overallScore} size={104} stroke={9} />}
-          <div className="flex-1 min-w-0">
-            <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
-              Composite Compliance Index
-            </div>
-            <div className="text-2xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
-              {agencyName}
-            </div>
-            {psrData?.reportPeriod && (
-              <div className="text-sm mt-1 font-mono" style={{ color: "#64708A" }}>
-                Paid Period: {psrData.reportPeriod}
-              </div>
-            )}
-            {psrData?.overallRiskLevel && (
-              <div className="mt-2">
-                <RiskBadge level={psrData.overallRiskLevel} clawback={capExposure || psrData.estimatedClawbackRisk} />
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex gap-2 mt-4 flex-wrap">
-          {psrData && (
-            <span className="text-xs font-mono px-2 py-1 rounded"
-              style={{ background: "#EAF6EF", color: "#2E9E62", border: "1px solid #A8DFC0" }}>
-              ✓ PS&R Report 810 Loaded
-            </span>
-          )}
-          {capData && (
-            <span className="text-xs font-mono px-2 py-1 rounded"
-              style={{ background: "#EAF6EF", color: "#2E9E62", border: "1px solid #A8DFC0" }}>
-              ✓ Beneficiary Count Loaded
-            </span>
-          )}
-        </div>
-
-        {categories.length > 0 && (
-          <div className="w-full flex flex-wrap gap-3 pt-5 mt-4 border-t" style={{ borderColor: "#E3E7ED" }}>
-            {categories.map((c) => (
-              <button key={c.id} onClick={() => setOpenId(openId === c.id ? null : c.id)}
-                className="text-left rounded-lg px-3 py-2 transition-colors"
-                style={{
-                  background: openId === c.id ? "#F7F0E1" : "transparent",
-                  border: `1px solid ${openId === c.id ? "#E8CFA0" : "#E3E7ED"}`,
-                  flex: "1 1 150px", minWidth: 0,
-                }}>
-                <div className="text-[11px] font-mono" style={{ color: "#64708A" }}>{c.label}</div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-lg font-mono" style={{ color: scoreColor(c.score) }}>{c.score}</span>
-                  {c.clawbackAmount > 0 && (
-                    <span className="text-[11px] font-mono" style={{ color: "#D14343" }}>
-                      ⚠ ${Number(c.clawbackAmount).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* SSVI Score */}
-      {ssvi != null && (
-        <div className="rounded-2xl p-6"
-          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-          <div className="flex items-start gap-5 flex-wrap">
-            <SSVIRing score={ssvi} size={96} stroke={9} />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
-                SSVI — Service &amp; Spending Variation Index
-              </div>
-              <div className="text-xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
-                {ssviLabel(ssvi)} · Score {ssvi}/16
-              </div>
-              <div className="text-sm mt-1" style={{ color: "#64708A" }}>
-                FY2025 national average: 6.42 · Median: 7 · Scores ≥10 trigger additional CMS oversight
-              </div>
-              <div className="mt-2 flex gap-3 flex-wrap">
-                {psrData?.ssviUtilizationScore != null && (
-                  <div className="rounded-lg px-3 py-1.5 text-sm font-mono" style={{ background: "#F5F6F8", color: "#16202E" }}>
-                    Utilization Score: <strong style={{ color: ssviColor(psrData.ssviUtilizationScore) }}>{psrData.ssviUtilizationScore}/8</strong>
-                  </div>
-                )}
-                {psrData?.ssviSpendingScore != null && (
-                  <div className="rounded-lg px-3 py-1.5 text-sm font-mono" style={{ background: "#F5F6F8", color: "#16202E" }}>
-                    Spending Score (est.): <strong>{psrData.ssviSpendingScore}/8</strong>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* SSVI disclaimer */}
-          <div className="mt-4 p-3 rounded-xl flex items-start gap-3"
-            style={{ background: "#F5F6F8", border: "1px solid #E3E7ED" }}>
-            <Info size={15} color="#64708A" className="shrink-0 mt-0.5" />
-            <div className="text-xs font-mono" style={{ color: "#64708A" }}>
-              <strong>How this SSVI estimate is calculated:</strong> The Utilization Score is calculated directly from your PS&R data using RN visit intensity (Rev Code 0551), length of stay, and level-of-care mix. The Non-Hospice Spending Score requires CMS Part A/B claims data not available in your PS&R — we use the FY2025 national average of 3.21 as an estimate. Your actual CMS-published SSVI may differ. Pull Report Type 832 and 833 from CASPER for discharge and readmission data to improve accuracy.
-            </div>
-          </div>
-
-          {ssvi >= 10 && (
-            <div className="mt-3 p-3 rounded-xl flex items-start gap-3"
-              style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
-              <AlertTriangle size={16} color="#D14343" className="shrink-0 mt-0.5" />
-              <div className="text-sm" style={{ color: "#B23A2E" }}>
-                <strong>High SSVI Warning:</strong> Scores ≥10 signal meaningful deviation from CMS peer norms. CMS posts provider-level SSVI scores publicly on the Hospice Center webpage. Facilities with high scores may be subject to additional program integrity review.
-              </div>
-            </div>
-          )}
-
-          {psrData?.ssviFindings?.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <div className="text-xs uppercase tracking-widest font-mono mb-1" style={{ color: "#64708A" }}>
-                SSVI Risk Factors from Your PS&R Data
-              </div>
-              {psrData.ssviFindings.map((f, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
-                  <div className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                    style={{ background: f.status === "risk" ? "#D14343" : f.status === "warn" ? "#C98A1F" : "#2E9E62" }} />
-                  <div className="flex-1">
-                    <div className="text-sm" style={{ color: "#16202E" }}>{f.measure}</div>
-                    <div className="text-xs mt-0.5" style={{ color: "#64708A" }}>{f.detail}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* CAP Exposure — calculated from real beneficiary counts */}
-      {(capLimit != null || capData) && (
-        <div className="rounded-2xl p-5"
-          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-          <div className="flex items-center gap-2 mb-4">
-            <PieChart size={16} color="#B8863F" />
-            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">
-              Medicare Aggregate CAP Analysis
-            </span>
-            {capExposure > 0 && (
-              <span className="text-xs font-mono px-2 py-0.5 rounded"
-                style={{ background: "#FDECEA", color: "#D14343" }}>🔴 CAP EXCEEDED</span>
-            )}
-          </div>
-
-          {capUtilizationPct && (
-            <>
-              <div className="flex justify-between mb-1">
-                <span className="text-sm font-mono" style={{ color: "#16202E" }}>Cap Utilization — Cap Year {capYear}</span>
-                <span className="text-sm font-mono font-bold"
-                  style={{ color: parseFloat(capUtilizationPct) >= 100 ? "#D14343" : parseFloat(capUtilizationPct) >= 85 ? "#C98A1F" : "#2E9E62" }}>
-                  {capUtilizationPct}%
-                </span>
-              </div>
-              <div className="w-full rounded-full h-3" style={{ background: "#E3E7ED" }}>
-                <div className="h-3 rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(parseFloat(capUtilizationPct), 100)}%`,
-                    background: parseFloat(capUtilizationPct) >= 100 ? "#D14343" : parseFloat(capUtilizationPct) >= 85 ? "#C98A1F" : "#2E9E62"
-                  }} />
-              </div>
-            </>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-            {[
-              { label: "Total Beneficiaries", value: totalBeneficiaries ? Number(totalBeneficiaries).toFixed(4) : "—", warn: false },
-              { label: `Per-Beneficiary Cap (FY${capYear})`, value: `$${Number(capPerBeneficiary).toLocaleString()}`, warn: false },
-              { label: "Aggregate Cap Limit", value: capLimit ? `$${Number(capLimit).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: false },
-              { label: "Net Reimbursement", value: netReimbursement ? `$${Number(netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: capExposure > 0 },
-            ].map((m, i) => (
-              <div key={i} className="rounded-xl p-3" style={{ background: m.warn ? "#FEF3E2" : "#F5F6F8" }}>
-                <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>{m.label}</div>
-                <div className="text-base font-mono mt-1" style={{ color: m.warn ? "#C98A1F" : "#16202E" }}>{m.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {capExposure > 0 && (
-            <div className="mt-3 p-4 rounded-xl flex items-start gap-3"
-              style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
-              <AlertTriangle size={18} color="#D14343" className="shrink-0 mt-0.5" />
-              <div>
-                <div className="text-sm font-semibold" style={{ color: "#D14343" }}>
-                  🔴 CAP EXCEEDED — ${Number(capExposure).toLocaleString(undefined, {maximumFractionDigits: 0})} owed to CMS
-                </div>
-                <div className="text-sm mt-1" style={{ color: "#B23A2E" }}>
-                  Your net reimbursement of ${Number(netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})} exceeds your aggregate cap limit of ${Number(capLimit).toLocaleString(undefined, {maximumFractionDigits: 0})} ({totalBeneficiaries?.toFixed(4)} beneficiaries × ${Number(capPerBeneficiary).toLocaleString()} per-beneficiary cap). CMS will initiate a clawback. Remittance required within 60 days of cap year close.
-                </div>
-              </div>
-            </div>
-          )}
-
-          {capExposure === 0 && capLimit && (
-            <div className="mt-3 p-3 rounded-xl flex items-start gap-3"
-              style={{ background: "#EAF6EF", border: "1px solid #A8DFC0" }}>
-              <CheckCircle2 size={16} color="#2E9E62" className="shrink-0 mt-0.5" />
-              <div className="text-sm" style={{ color: "#1A6E41" }}>
-                <strong>Under Cap.</strong> Remaining cap headroom: ${Number(capLimit - netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}. Monitor closely as the cap year progresses.
-              </div>
-            </div>
-          )}
-
-          <div className="mt-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
-            <div className="text-xs font-mono" style={{ color: "#64708A" }}>
-              <strong>How this is calculated:</strong> Beneficiary counts from your Beneficiary Count Summary (Report B51562) × FY{capYear} per-beneficiary cap amount of ${Number(capPerBeneficiary).toLocaleString()} = your aggregate cap limit. Net reimbursement from your PS&R Provider Summary Report (Report 810). This matches the CMS methodology exactly.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PS&R Metrics from actual revenue codes */}
-      {metrics && Object.values(metrics).some(v => v != null) && (
-        <div className="rounded-2xl p-5"
-          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-          <div className="flex items-center gap-2 mb-3">
-            <BarChart3 size={16} color="#B8863F" />
-            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">PS&amp;R Utilization Metrics</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: "Medicare Days (Most Recent)", value: metrics.totalMedicareDays != null ? Number(metrics.totalMedicareDays).toLocaleString() : "—", warn: false },
-              { label: "Total Claims", value: metrics.totalClaims != null ? Number(metrics.totalClaims).toLocaleString() : "—", warn: false },
-              { label: "Unduplicated Census", value: metrics.totalUnduplicatedCensus != null ? Number(metrics.totalUnduplicatedCensus).toLocaleString() : "—", warn: false },
-              { label: "Avg Length of Stay", value: metrics.avgLengthOfStay != null ? `${metrics.avgLengthOfStay} days` : "—", warn: metrics.avgLengthOfStay > 180 },
-              { label: "SN Visit Units (15-min)", value: metrics.snVisitUnits != null ? Number(metrics.snVisitUnits).toLocaleString() : "—", warn: false },
-              { label: "RN Intensity (units/day)", value: metrics.rnUnitsPerDay != null ? metrics.rnUnitsPerDay : "—", warn: metrics.rnUnitsPerDay < 1.0 },
-              { label: "Aide Visit Units", value: metrics.aideVisitUnits != null ? Number(metrics.aideVisitUnits).toLocaleString() : "—", warn: false },
-              { label: "Net Reimbursement", value: metrics.netReimbursement != null ? `$${Number(metrics.netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: false },
-            ].map((m, i) => (
-              <div key={i} className="rounded-xl p-3" style={{ background: m.warn ? "#FEF3E2" : "#F5F6F8" }}>
-                <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>{m.label}</div>
-                <div className="text-base font-mono mt-1" style={{ color: m.warn ? "#C98A1F" : "#16202E" }}>{m.value}</div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
-            <div className="text-xs font-mono" style={{ color: "#64708A" }}>
-              <strong>Revenue code key:</strong> 0551 = Skilled Nursing/15-min increments · 0561 = Medical Social Services · 0571 = Aide/Home Health · 0651 = Routine Home Care days · 0250 = Pharmacy units
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Critical Findings */}
-      {criticalFindings.length > 0 && (
-        <div className="rounded-2xl p-5 space-y-3"
-          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} color="#D14343" />
-            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">Critical Findings</span>
-          </div>
-          {criticalFindings.map((f, i) => (
-            <div key={i} className="flex gap-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
-              <span className="text-[10px] uppercase font-mono px-2 py-1 rounded shrink-0 h-fit"
-                style={{ background: severityColor(f.severity) + "1A", color: severityColor(f.severity) }}>
-                {f.severity}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-mono mb-0.5" style={{ color: "#B8863F" }}>{f.category}</div>
-                <div className="text-sm" style={{ color: "#16202E" }}>{f.finding}</div>
-                <div className="text-sm mt-1" style={{ color: "#64708A" }}>→ {f.recommendation}</div>
-                {f.clawbackRisk > 0 && (
-                  <div className="mt-1.5 inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded"
-                    style={{ background: "#FDECEA", color: "#D14343" }}>
-                    <DollarSign size={11} />Clawback: ${Number(f.clawbackRisk).toLocaleString()}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Category drill-down */}
-      {categories.length > 0 && (
-        <div className="space-y-3">
-          {categories.map((cat) => {
-            const open = openId === cat.id;
-            return (
-              <div key={cat.id} className="rounded-2xl overflow-hidden"
-                style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
-                <button onClick={() => setOpenId(open ? null : cat.id)}
-                  className="w-full flex items-center gap-4 p-4 text-left">
-                  <ScoreRing score={cat.score} size={54} stroke={6} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-base">{cat.label}</span>
-                      {cat.clawbackAmount > 0 && (
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded"
-                          style={{ background: "#FDECEA", color: "#D14343" }}>
-                          🔴 ${Number(cat.clawbackAmount).toLocaleString()} · {cat.auditReason}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm mt-1 truncate" style={{ color: "#64708A" }}>{cat.summary}</p>
-                  </div>
-                  {open ? <ChevronDown size={18} color="#64708A" /> : <ChevronRight size={18} color="#64708A" />}
-                </button>
-                {open && (
-                  <div className="px-4 pb-5 pt-1 space-y-5" style={{ borderTop: "1px solid #E3E7ED" }}>
-                    {cat.factors?.length > 0 && (
-                      <div>
-                        <div className="text-xs uppercase tracking-widest font-mono mt-4 mb-2" style={{ color: "#64708A" }}>
-                          Scoring Factors
-                        </div>
-                        <div className="space-y-2">
-                          {cat.factors.map((f, i) => (
-                            <div key={i} className="flex items-start gap-3">
-                              <div className="w-10 shrink-0 text-right text-[11px] font-mono pt-0.5" style={{ color: "#8992A3" }}>{f.weight}%</div>
-                              <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: statusColor(f.status) }} />
-                              <div className="flex-1">
-                                <div className="text-sm" style={{ color: "#16202E" }}>{f.label}</div>
-                                <div className="text-xs mt-0.5" style={{ color: "#64708A" }}>{f.detail}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {cat.actions?.length > 0 && (
-                      <div>
-                        <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#B8863F" }}>
-                          Recommended Actions
-                        </div>
-                        <ul className="space-y-1.5">
-                          {cat.actions.map((a, i) => (
-                            <li key={i} className="text-sm flex gap-2" style={{ color: "#16202E" }}>
-                              <CheckCircle2 size={15} className="shrink-0 mt-0.5" color="#2E9E62" />{a}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <RecertificationTracker />
-    </div>
-  );
-}
-
 // ─── PDF EXTRACTION ───────────────────────────────────────────────────────────
 async function extractPDFText(file) {
   if (!window.pdfjsLib) {
@@ -548,308 +157,750 @@ async function extractPDFText(file) {
   return text;
 }
 
-// ─── PROMPTS — REWRITTEN FOR REAL CMS PS&R REPORT STRUCTURE ──────────────────
-const PSR_PROMPT_1 = `You are a Medicare hospice compliance analyst expert in CMS PS&R (Provider Statistical and Reimbursement System) reports.
+function detectReportType(filename, text) {
+  const fn = filename.toLowerCase();
+  const tx = text.toLowerCase().substring(0, 1000);
+  if (fn.includes("pepper") || tx.includes("pepper") || tx.includes("program for evaluating payment")) return "pepper";
+  if (fn.includes("cahps") || tx.includes("cahps") || tx.includes("consumer assessment")) return "cahps";
+  if (fn.includes("qapi") || tx.includes("quality assurance and performance") || tx.includes("qapi")) return "qapi";
+  if (fn.includes("survey") || tx.includes("statement of deficiencies") || tx.includes("cms-2567") || tx.includes("plan of correction")) return "survey";
+  if (fn.includes("policy") || fn.includes("manual") || fn.includes("procedure")) return "policy";
+  if (fn.includes("beneficiar") || fn.includes("b51562") || tx.includes("beneficiary count summary") || tx.includes("streamlined hospice beneficiary")) return "beneficiary";
+  if (fn.includes("compare") || tx.includes("hospice compare") || tx.includes("cms public")) return "cms_public";
+  if (tx.includes("provider statistical and reimbursement") || tx.includes("provider summary report") || fn.includes("summary") || fn.includes("810")) return "psr";
+  return "psr"; // default
+}
 
-You are reading a PS&R Provider Summary Report (Report Type 810) for a HOSPICE - NON-HOSPITAL BASED provider. This report has a specific structure with these sections:
+// ─── MASTER ANALYSIS PROMPT ───────────────────────────────────────────────────
+function buildMasterPrompt(reportSummaries) {
+  return `You are a Medicare hospice compliance expert analyzing multiple reports for AIHospiceOS. You have been given extracted text from the following report types: ${Object.keys(reportSummaries).join(", ")}.
 
-STATISTIC SECTION contains:
-- MEDICARE DAYS: total routine home care days billed (Revenue Code 0651)
-- CLAIMS: number of Medicare claims submitted  
-- TOTAL UNDUPLICATED CENSUS COUNT: unique patients served
+Analyze ALL available data and produce a comprehensive compliance scorecard. Use actual numbers from the reports wherever possible.
 
-CHARGE SECTION contains revenue code rows:
-- Rev Code 0250 = PHARMACY (units = drug units, not visits)
-- Rev Code 0551 = SKILLED NURS/VISIT/15 MIN (units = 15-minute increments of skilled nursing time)
-- Rev Code 0561 = MED SOC SERV/VISIT/15 MIN (units = 15-minute increments of social work)
-- Rev Code 0571 = AIDE/HOME HLTH/VISIT/15 M (units = 15-minute increments of aide time)
-- Rev Code 0651 = HOSPICE/RTN HOME/DAYS (UNDUP DAYS = total routine home care days)
+KEY REPORT KNOWLEDGE:
+- PS&R Report 810: Contains STATISTIC SECTION (Medicare Days = Rev 0651, Claims, Unduplicated Census) and CHARGE SECTION (Rev 0551 = Skilled Nursing 15-min units, Rev 0561 = Social Work, Rev 0571 = Aide visits, Rev 0651 = RHC days) and REIMBURSEMENT SECTION (Gross, Sequestration, Net Reimbursement)
+- Beneficiary Count B51562: Contains cap year table with Full/Fractional/Total Beneficiary Counts. CAP limit = Total Beneficiaries × per-beneficiary cap amount
+- PEPPER: Contains outlier statistics comparing agency to national/jurisdiction averages for hospice claims patterns
+- CAHPS: Patient/family satisfaction scores across communication, care, information domains  
+- QAPI: Quality improvement projects, performance metrics, committee meeting documentation
+- Survey Results: CMS-2567 deficiency citations, Conditions of Participation tags, Plan of Correction status
+- CMS Public Data: Hospice Compare quality measures, publicly posted SSVI scores
 
-Each column represents a different SERVICE PERIOD (fiscal year). Use the most recent period with data.
+SSVI CALCULATION (0-16 scale, lower is better, national average 6.42):
+- Utilization Score (0-8): Based on RN visit intensity (Rev 0551 units ÷ Medicare days, flag if under 1.0), length of stay (flag if avg over 180 days), live discharge patterns, GIP ratio
+- Non-Hospice Spending Score (0-8): Requires CMS Part A/B data not in PS&R — use 3.21 national average unless CMS public data is provided
+- If actual SSVI score is found in CMS public data, use that instead of estimating
 
-REIMBURSEMENT SECTION contains:
-- GROSS REIMBURSEMENT: total billed
-- SEQUESTRATION: mandatory 2% reduction
-- NET REIMBURSEMENT: actual Medicare payment after sequestration
-
-Calculate these SSVI metrics:
-- RN intensity = Rev 0551 units ÷ total Medicare days (units per day). National average is ~1.5 units/day. Under 1.0 is a risk flag.
-- Average length of stay = total Medicare days ÷ unduplicated census count
-- All days being Rev Code 0651 (routine home care only) is GOOD — means no GIP or continuous care concerns
-
-Calculate SSVI Utilization Score (0-8) based on:
-- RN intensity below 1.0 units/day = +2 points toward higher score (worse)
-- RN intensity 1.0-1.5 = +1 point
-- Average LOS over 180 days = +2 points
-- Average LOS 120-180 days = +1 point
-- Start at 0 and add points. Cap at 8.
-- Note: Non-hospice spending score requires CMS data not in PS&R — use national average of 3.21
+CAP CALCULATION:
+- FY2025 per-beneficiary cap: $34,159.74
+- FY2026 per-beneficiary cap: $34,738.63
+- CAP limit = Total Beneficiary Count × per-beneficiary cap
+- Over-cap = Net Reimbursement − CAP limit (if positive, agency owes CMS)
 
 Respond with ONLY valid JSON starting with { and ending with }. No other text:
 
-{"agencyName":"string","providerNumber":"string","reportPeriod":"string e.g. 08/01/07 THRU 07/07/26","mostRecentYear":"2026","totalReimbursement":number,"netReimbursement":number,"estimatedClawbackRisk":0,"overallScore":number_0_to_100,"overallRiskLevel":"high|medium|low","ssviScore":number_0_to_16,"ssviUtilizationScore":number_0_to_8,"ssviSpendingScore":3.21,"ssviRiskLevel":"high|medium|low","ssviFindings":[{"measure":"string","detail":"string with actual numbers from report","status":"good|warn|risk"}],"psrMetrics":{"totalMedicareDays":number,"totalClaims":number,"totalUnduplicatedCensus":number,"avgLengthOfStay":number,"snVisitUnits":number,"rnUnitsPerDay":number,"aideVisitUnits":number,"socialWorkUnits":number,"pharmacyUnits":number,"netReimbursement":number,"grossReimbursement":number,"sequestration":number},"categories":[{"id":"rn_intensity","label":"RN Visit Intensity","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string with actual metric","factors":[{"weight":60,"label":"SN visit units per Medicare day","status":"good|warn|risk","detail":"X units ÷ Y days = Z units/day vs national avg 1.5"},{"weight":40,"label":"Total skilled nursing hours","status":"good|warn|risk","detail":"X units × 15 min = Y hours total"}],"actions":["string"]},{"id":"length_of_stay","label":"Length of Stay Analysis","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string","factors":[{"weight":70,"label":"Average length of stay","status":"good|warn|risk","detail":"X days ÷ Y patients = Z avg days vs national avg 89"},{"weight":30,"label":"Total patient volume","status":"good|warn|risk","detail":"string"}],"actions":["string"]},{"id":"level_of_care","label":"Level of Care Mix","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string","factors":[{"weight":60,"label":"Routine home care days","status":"good|warn|risk","detail":"string"},{"weight":40,"label":"GIP/Continuous Care presence","status":"good|warn|risk","detail":"string"}],"actions":["string"]},{"id":"reimbursement","label":"Reimbursement Accuracy","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string","factors":[{"weight":60,"label":"Sequestration compliance","status":"good|warn|risk","detail":"string"},{"weight":40,"label":"Gross to net ratio","status":"good|warn|risk","detail":"string"}],"actions":["string"]}]}
+{
+  "agencyName": "string",
+  "providerNumber": "string",
+  "reportPeriod": "string",
+  "reportsAnalyzed": ["list of report types found"],
+  "overallComplianceScore": number_0_to_100,
+  "overallRiskLevel": "high|medium|low",
+  "ssviScore": number_0_to_16,
+  "ssviUtilizationScore": number_0_to_8,
+  "ssviSpendingScore": number_0_to_8,
+  "ssviIsEstimated": true_or_false,
+  "ssviFindings": [{"measure": "string", "detail": "string with actual numbers", "status": "good|warn|risk"}],
+  "capData": {
+    "capYear": "2026",
+    "totalBeneficiaryCount": number_or_null,
+    "perBeneficiaryCap": number,
+    "capLimit": number_or_null,
+    "netReimbursement": number_or_null,
+    "capExposure": number_or_null,
+    "capUtilizationPct": number_or_null
+  },
+  "psrMetrics": {
+    "totalMedicareDays": number_or_null,
+    "totalClaims": number_or_null,
+    "totalUnduplicatedCensus": number_or_null,
+    "avgLengthOfStay": number_or_null,
+    "snVisitUnits": number_or_null,
+    "rnUnitsPerDay": number_or_null,
+    "netReimbursement": number_or_null,
+    "grossReimbursement": number_or_null
+  },
+  "complianceCategories": [
+    {
+      "id": "string",
+      "label": "string",
+      "score": number_0_to_100,
+      "source": "which report this came from",
+      "riskLevel": "high|medium|low",
+      "clawbackAmount": number_or_0,
+      "summary": "string with specific numbers",
+      "factors": [{"weight": number, "label": "string", "status": "good|warn|risk", "detail": "string with actual data"}],
+      "actions": ["specific actionable string"]
+    }
+  ],
+  "qualityMetrics": {
+    "cahpsOverallScore": number_or_null,
+    "cahpsNationalAvg": number_or_null,
+    "pepperOutlierFlags": number_or_0,
+    "qapiProjectCount": number_or_0,
+    "surveyDeficiencyCount": number_or_0,
+    "surveyConditionLevel": true_or_false,
+    "openDeficiencies": number_or_0
+  },
+  "criticalFindings": [
+    {"severity": "high|medium|low", "category": "string", "source": "report type", "finding": "string with specific data", "recommendation": "string", "clawbackRisk": number_or_0}
+  ]
+}
 
-Use ACTUAL NUMBERS from the report. Do not use placeholder values.`;
+Score these compliance categories (include only categories where you have data):
+1. RN Visit Intensity & SSVI Utilization (from PS&R Rev 0551)
+2. Medicare CAP Exposure (from PS&R + Beneficiary Count)
+3. Length of Stay Analysis (from PS&R)
+4. Survey Compliance & CoP Status (from Survey Results)
+5. Quality Measures & CAHPS (from CAHPS/CMS data)
+6. QAPI Program Strength (from QAPI docs)
+7. PEPPER Outlier Risk (from PEPPER report)
+8. Policy & Documentation (from Policy Manuals)
 
-const PSR_PROMPT_2 = `You are a Medicare hospice compliance analyst. Based on the same PS&R Provider Summary Report (Report Type 810) text, generate compliance scoring for 3 additional categories and identify critical findings.
+Only include categories where you have actual data. Use real numbers throughout.`;
+}
 
-Focus on:
-1. Year-over-year trends between service periods (compare columns)
-2. RN visit intensity trends (is it increasing or decreasing?)  
-3. Census growth vs reimbursement growth alignment
-4. Any anomalies in the charge section
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+function Dashboard({ analysisData }) {
+  const [openId, setOpenId] = useState(null);
 
-Respond with ONLY valid JSON starting with { and ending with }:
-
-{"categories":[{"id":"billing_trend","label":"Billing & Claims Trend","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string with year over year comparison","factors":[{"weight":50,"label":"Claims volume trend","status":"good|warn|risk","detail":"string with actual claim counts"},{"weight":50,"label":"Reimbursement per claim trend","status":"good|warn|risk","detail":"string with actual dollar amounts"}],"actions":["string"]},{"id":"visit_intensity_trend","label":"Visit Intensity Trend","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string","factors":[{"weight":60,"label":"SN visit unit trend year over year","status":"good|warn|risk","detail":"string with actual unit counts by year"},{"weight":40,"label":"Aide visit trend","status":"good|warn|risk","detail":"string"}],"actions":["string"]},{"id":"survey_readiness","label":"Survey Readiness Indicators","score":number,"clawbackAmount":0,"auditReason":"string","summary":"string","factors":[{"weight":50,"label":"Documentation completeness signals","status":"good|warn|risk","detail":"string"},{"weight":50,"label":"Census stability","status":"good|warn|risk","detail":"string"}],"actions":["string"]}],"criticalFindings":[{"severity":"high|medium|low","category":"string","finding":"string with specific numbers from report","recommendation":"string","clawbackRisk":0}]}
-
-Use ACTUAL NUMBERS from the report. Maximum 3 criticalFindings. Reference specific revenue codes, dollar amounts, and year-over-year changes.`;
-
-const BENEFICIARY_PROMPT = `You are a Medicare hospice CAP (Aggregate Cap) specialist reading a CMS PS&R Beneficiary Count Summary Report (Report Type B51562).
-
-This report shows a table with columns: Cap Year | Full Beneficiary Count | Fractional Beneficiary Count | Total Beneficiary Count
-
-The Total Beneficiary Count is used to calculate the Medicare Aggregate Cap:
-- Cap Limit = Total Beneficiary Count × Per-Beneficiary Cap Amount for that fiscal year
-- FY2023 per-beneficiary cap: $32,486.92
-- FY2024 per-beneficiary cap: $33,494.01  
-- FY2025 per-beneficiary cap: $34,159.74
-- FY2026 per-beneficiary cap: $34,738.63
-
-Extract ALL cap years shown and their beneficiary counts.
-
-Respond with ONLY valid JSON starting with { and ending with }:
-
-{"agencyName":"string","providerNumber":"string","beneficiaryIdentificationPeriod":"string","paidDatesRange":"string","capYearData":[{"capYear":number,"fullBeneficiaryCount":number,"fractionalBeneficiaryCount":number,"totalBeneficiaryCount":number,"perBeneficiaryCap":number,"aggregateCapLimit":number}],"mostRecentCapYear":number,"totalBeneficiaryCount":number,"aggregateCapLimit":number,"perBeneficiaryCap":number}
-
-Use ACTUAL NUMBERS from the report table. Calculate aggregateCapLimit = totalBeneficiaryCount × perBeneficiaryCap for each year.`;
-
-// ─── UPLOAD ZONE ──────────────────────────────────────────────────────────────
-function UploadZone({ label, description, badge, icon: Icon, onFile, loading, hasResult, comingSoon }) {
-  const [dragOver, setDragOver] = useState(false);
-  const fileRef = useRef();
-
-  const onDrop = useCallback((e) => {
-    e.preventDefault(); setDragOver(false);
-    if (!comingSoon && !loading) onFile(e.dataTransfer.files[0]);
-  }, [comingSoon, loading, onFile]);
-
-  if (comingSoon) {
+  if (!analysisData) {
     return (
-      <div className="rounded-2xl p-8 flex flex-col items-center justify-center gap-3 text-center"
-        style={{ background: "#F5F6F8", border: "2px dashed #C7CDD8" }}>
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#E3E7ED" }}>
-          <Lock size={22} color="#8992A3" />
+      <div className="space-y-6">
+        <div className="rounded-2xl p-12 flex flex-col items-center justify-center gap-4 text-center"
+          style={{ background: "#FFFFFF", border: "2px dashed #C7CDD8" }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#F7F0E1" }}>
+            <Upload size={28} color="#B8863F" />
+          </div>
+          <div style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-2xl">
+            No reports uploaded yet
+          </div>
+          <p className="text-sm max-w-lg" style={{ color: "#64708A" }}>
+            Go to Report Upload and submit your CMS reports. Upload any combination of PS&R, Beneficiary Count, PEPPER, CAHPS, QAPI, Survey Results, Policy Manuals, or CMS Public Data. The more reports you upload, the more accurate your SSVI score and compliance dashboard.
+          </p>
+          <div className="flex gap-2 mt-2 flex-wrap justify-center">
+            {["PS&R 810", "Beneficiary Count", "PEPPER", "CAHPS", "QAPI", "Survey Results"].map((item) => (
+              <span key={item} className="text-xs font-mono px-3 py-1.5 rounded-full"
+                style={{ background: "#F5F6F8", color: "#64708A", border: "1px solid #E3E7ED" }}>
+                {item}
+              </span>
+            ))}
+          </div>
         </div>
-        <div style={{ fontFamily: "Fraunces, serif", color: "#8992A3" }} className="text-lg">{label}</div>
-        <div className="text-sm" style={{ color: "#8992A3" }}>{description}</div>
-        <span className="text-xs font-mono px-3 py-1 rounded-full" style={{ background: "#E3E7ED", color: "#64708A" }}>Coming Soon</span>
       </div>
     );
   }
 
+  const d = analysisData;
+  const cap = d.capData || {};
+  const metrics = d.psrMetrics || {};
+  const quality = d.qualityMetrics || {};
+  const categories = d.complianceCategories || [];
+  const findings = d.criticalFindings || [];
+
   return (
-    <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={onDrop}
-      onClick={() => !loading && fileRef.current?.click()}
-      className="rounded-2xl p-8 flex flex-col items-center justify-center gap-3 text-center cursor-pointer transition-all"
-      style={{
-        background: hasResult ? "#EAF6EF" : dragOver ? "#F7F0E1" : "#FFFFFF",
-        border: `2px dashed ${hasResult ? "#2E9E62" : dragOver ? "#B8863F" : "#C7CDD8"}`,
-        boxShadow: "0 1px 3px rgba(16,24,40,0.04)",
-      }}>
-      <input ref={fileRef} type="file" accept=".pdf" className="hidden"
-        onChange={(e) => { if (e.target.files[0]) onFile(e.target.files[0]); e.target.value = ""; }} />
-      {badge && (
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full"
-          style={{ background: "#F7F0E1", color: "#B8863F", border: "1px solid #E8CFA0" }}>
-          {badge}
-        </span>
-      )}
-      <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-        style={{ background: hasResult ? "#C5EDDA" : "#F7F0E1" }}>
-        {loading ? <Loader2 size={22} color="#B8863F" className="animate-spin" /> :
-          hasResult ? <CheckCircle2 size={22} color="#2E9E62" /> :
-          <Icon size={22} color="#B8863F" />}
+    <div className="space-y-6">
+      {/* Main scorecard */}
+      <div className="rounded-2xl p-6"
+        style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+        <div className="flex items-start gap-5 flex-wrap">
+          {d.overallComplianceScore > 0 && <ScoreRing score={d.overallComplianceScore} size={104} stroke={9} />}
+          <div className="flex-1 min-w-0">
+            <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
+              Composite Compliance Index
+            </div>
+            <div className="text-2xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
+              {d.agencyName || "Unknown Agency"}
+            </div>
+            {d.reportPeriod && (
+              <div className="text-sm mt-1 font-mono" style={{ color: "#64708A" }}>
+                Period: {d.reportPeriod}
+              </div>
+            )}
+            {d.overallRiskLevel && (
+              <div className="mt-2">
+                <RiskBadge level={d.overallRiskLevel} clawback={cap.capExposure || 0} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Reports loaded */}
+        {d.reportsAnalyzed?.length > 0 && (
+          <div className="flex gap-2 mt-4 flex-wrap">
+            {d.reportsAnalyzed.map((r) => (
+              <span key={r} className="text-xs font-mono px-2 py-1 rounded"
+                style={{ background: "#EAF6EF", color: "#2E9E62", border: "1px solid #A8DFC0" }}>
+                ✓ {r}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Category pills */}
+        {categories.length > 0 && (
+          <div className="w-full flex flex-wrap gap-3 pt-5 mt-4 border-t" style={{ borderColor: "#E3E7ED" }}>
+            {categories.map((c) => (
+              <button key={c.id} onClick={() => setOpenId(openId === c.id ? null : c.id)}
+                className="text-left rounded-lg px-3 py-2 transition-colors"
+                style={{
+                  background: openId === c.id ? "#F7F0E1" : "transparent",
+                  border: `1px solid ${openId === c.id ? "#E8CFA0" : "#E3E7ED"}`,
+                  flex: "1 1 150px", minWidth: 0,
+                }}>
+                <div className="text-[11px] font-mono truncate" style={{ color: "#64708A" }}>{c.label}</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg font-mono" style={{ color: scoreColor(c.score) }}>{c.score}</span>
+                  {c.clawbackAmount > 0 && (
+                    <span className="text-[11px] font-mono" style={{ color: "#D14343" }}>
+                      ⚠ ${Number(c.clawbackAmount).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <div style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">{label}</div>
-      <div className="text-sm" style={{ color: "#64708A" }}>{description}</div>
-      {loading && (
-        <div className="text-xs font-mono text-center" style={{ color: "#B8863F" }}>
-          Analyzing with AI — this may take 30-60 seconds…
+
+      {/* SSVI */}
+      {d.ssviScore != null && (
+        <div className="rounded-2xl p-6"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-start gap-5 flex-wrap">
+            <SSVIRing score={d.ssviScore} size={96} stroke={9} />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>
+                SSVI — Service &amp; Spending Variation Index
+              </div>
+              <div className="text-xl mt-1" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
+                {ssviLabel(d.ssviScore)} · Score {d.ssviScore}/16
+                {d.ssviIsEstimated && (
+                  <span className="text-sm font-mono ml-2" style={{ color: "#64708A" }}>(estimated)</span>
+                )}
+              </div>
+              <div className="text-sm mt-1" style={{ color: "#64708A" }}>
+                FY2025 national average: 6.42 · Median: 7 · Scores ≥10 trigger CMS program integrity review
+              </div>
+              <div className="mt-2 flex gap-3 flex-wrap">
+                {d.ssviUtilizationScore != null && (
+                  <div className="rounded-lg px-3 py-1.5 text-sm font-mono" style={{ background: "#F5F6F8", color: "#16202E" }}>
+                    Utilization: <strong style={{ color: ssviColor(d.ssviUtilizationScore) }}>{d.ssviUtilizationScore}/8</strong>
+                  </div>
+                )}
+                {d.ssviSpendingScore != null && (
+                  <div className="rounded-lg px-3 py-1.5 text-sm font-mono" style={{ background: "#F5F6F8", color: "#16202E" }}>
+                    Non-Hospice Spending: <strong>{d.ssviSpendingScore}/8</strong>
+                    {d.ssviIsEstimated && <span style={{ color: "#64708A" }}> (est.)</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {d.ssviIsEstimated && (
+            <div className="mt-4 p-3 rounded-xl" style={{ background: "#F5F6F8", border: "1px solid #E3E7ED" }}>
+              <div className="text-xs font-mono" style={{ color: "#64708A" }}>
+                <strong>SSVI Accuracy Note:</strong> Utilization Score calculated from your PS&R data (RN visit intensity, LOS, level-of-care mix). Non-Hospice Spending Score requires CMS Part A/B claims data — using national average 3.21. Upload CMS Public Data or Hospice Compare export for actual published SSVI score. Pull Report Types 832 and 833 from CASPER for discharge/readmission data to further improve accuracy.
+              </div>
+            </div>
+          )}
+
+          {d.ssviScore >= 10 && (
+            <div className="mt-3 p-3 rounded-xl flex items-start gap-3"
+              style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
+              <AlertTriangle size={16} color="#D14343" className="shrink-0 mt-0.5" />
+              <div className="text-sm" style={{ color: "#B23A2E" }}>
+                <strong>High SSVI Warning:</strong> Scores ≥10 indicate meaningful deviation from CMS peer norms on both spending and utilization. CMS posts provider-level scores publicly. Facilities above 10 face elevated program integrity scrutiny.
+              </div>
+            </div>
+          )}
+
+          {d.ssviFindings?.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs uppercase tracking-widest font-mono mb-1" style={{ color: "#64708A" }}>SSVI Risk Factors</div>
+              {d.ssviFindings.map((f, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
+                  <div className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                    style={{ background: f.status === "risk" ? "#D14343" : f.status === "warn" ? "#C98A1F" : "#2E9E62" }} />
+                  <div className="flex-1">
+                    <div className="text-sm" style={{ color: "#16202E" }}>{f.measure}</div>
+                    <div className="text-xs mt-0.5" style={{ color: "#64708A" }}>{f.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
-      {hasResult && !loading && (
-        <div className="text-xs font-mono" style={{ color: "#2E9E62" }}>✓ Loaded — click to re-upload</div>
-      )}
-      {!loading && !hasResult && (
-        <div className="text-xs font-mono px-3 py-1 rounded-full" style={{ background: "#F7F0E1", color: "#B8863F" }}>
-          Drop PDF here or click to browse
+
+      {/* CAP */}
+      {cap.capLimit != null && (
+        <div className="rounded-2xl p-5"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-center gap-2 mb-4">
+            <PieChart size={16} color="#B8863F" />
+            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">
+              Medicare Aggregate CAP — Cap Year {cap.capYear}
+            </span>
+            {cap.capExposure > 0 && (
+              <span className="text-xs font-mono px-2 py-0.5 rounded"
+                style={{ background: "#FDECEA", color: "#D14343" }}>🔴 CAP EXCEEDED</span>
+            )}
+          </div>
+
+          {cap.capUtilizationPct != null && (
+            <>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm font-mono" style={{ color: "#16202E" }}>Cap Utilization</span>
+                <span className="text-sm font-mono font-bold"
+                  style={{ color: cap.capUtilizationPct >= 100 ? "#D14343" : cap.capUtilizationPct >= 85 ? "#C98A1F" : "#2E9E62" }}>
+                  {Number(cap.capUtilizationPct).toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-full rounded-full h-3" style={{ background: "#E3E7ED" }}>
+                <div className="h-3 rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(cap.capUtilizationPct, 100)}%`,
+                    background: cap.capUtilizationPct >= 100 ? "#D14343" : cap.capUtilizationPct >= 85 ? "#C98A1F" : "#2E9E62"
+                  }} />
+              </div>
+            </>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            {[
+              { label: "Total Beneficiaries", value: cap.totalBeneficiaryCount ? Number(cap.totalBeneficiaryCount).toFixed(4) : "—", warn: false },
+              { label: `Per-Beneficiary Cap`, value: cap.perBeneficiaryCap ? `$${Number(cap.perBeneficiaryCap).toLocaleString()}` : "—", warn: false },
+              { label: "Aggregate Cap Limit", value: cap.capLimit ? `$${Number(cap.capLimit).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: false },
+              { label: "Net Reimbursement", value: cap.netReimbursement ? `$${Number(cap.netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: cap.capExposure > 0 },
+            ].map((m, i) => (
+              <div key={i} className="rounded-xl p-3" style={{ background: m.warn ? "#FEF3E2" : "#F5F6F8" }}>
+                <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>{m.label}</div>
+                <div className="text-base font-mono mt-1" style={{ color: m.warn ? "#C98A1F" : "#16202E" }}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {cap.capExposure > 0 && (
+            <div className="mt-3 p-4 rounded-xl" style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
+              <div className="text-sm font-semibold" style={{ color: "#D14343" }}>
+                🔴 CAP EXCEEDED — ${Number(cap.capExposure).toLocaleString(undefined, {maximumFractionDigits: 0})} owed to CMS
+              </div>
+              <div className="text-sm mt-1" style={{ color: "#B23A2E" }}>
+                Net reimbursement exceeds aggregate cap limit. CMS will initiate a clawback. Remittance required within 60 days of cap year close. Contact your MAC immediately.
+              </div>
+            </div>
+          )}
+
+          {cap.capExposure === 0 && cap.capLimit > 0 && (
+            <div className="mt-3 p-3 rounded-xl flex items-start gap-3"
+              style={{ background: "#EAF6EF", border: "1px solid #A8DFC0" }}>
+              <CheckCircle2 size={16} color="#2E9E62" className="shrink-0 mt-0.5" />
+              <div className="text-sm" style={{ color: "#1A6E41" }}>
+                Under cap. Remaining headroom: ${Number(cap.capLimit - cap.netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}. Monitor closely as cap year progresses.
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Quality Metrics */}
+      {(quality.cahpsOverallScore != null || quality.surveyDeficiencyCount > 0 || quality.pepperOutlierFlags > 0 || quality.qapiProjectCount > 0) && (
+        <div className="rounded-2xl p-5"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <BarChart3 size={16} color="#B8863F" />
+            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">Quality & Survey Metrics</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "CAHPS Overall Score", value: quality.cahpsOverallScore != null ? `${quality.cahpsOverallScore}%` : "—", warn: quality.cahpsOverallScore < 75, sub: quality.cahpsNationalAvg ? `Nat'l avg: ${quality.cahpsNationalAvg}%` : null },
+              { label: "Survey Deficiencies", value: quality.surveyDeficiencyCount != null ? quality.surveyDeficiencyCount : "—", warn: quality.surveyDeficiencyCount > 0, sub: quality.surveyConditionLevel ? "⚠ Condition-level cited" : quality.openDeficiencies > 0 ? `${quality.openDeficiencies} open` : "All closed" },
+              { label: "PEPPER Outlier Flags", value: quality.pepperOutlierFlags != null ? quality.pepperOutlierFlags : "—", warn: quality.pepperOutlierFlags > 0, sub: quality.pepperOutlierFlags > 0 ? "Above threshold" : "Within range" },
+              { label: "QAPI Active Projects", value: quality.qapiProjectCount != null ? quality.qapiProjectCount : "—", warn: quality.qapiProjectCount === 0, sub: quality.qapiProjectCount > 0 ? "Documented PIPs" : "No PIPs documented" },
+            ].map((m, i) => (
+              <div key={i} className="rounded-xl p-3" style={{ background: m.warn ? "#FEF3E2" : "#F5F6F8" }}>
+                <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>{m.label}</div>
+                <div className="text-lg font-mono mt-1" style={{ color: m.warn ? "#C98A1F" : "#16202E" }}>{m.value}</div>
+                {m.sub && <div className="text-[11px] font-mono mt-0.5" style={{ color: m.warn ? "#C98A1F" : "#8992A3" }}>{m.sub}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PS&R Metrics */}
+      {metrics && Object.values(metrics).some(v => v != null) && (
+        <div className="rounded-2xl p-5"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <BarChart3 size={16} color="#B8863F" />
+            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">PS&amp;R Utilization Metrics</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "Medicare Days", value: metrics.totalMedicareDays != null ? Number(metrics.totalMedicareDays).toLocaleString() : "—", warn: false },
+              { label: "Total Claims", value: metrics.totalClaims != null ? Number(metrics.totalClaims).toLocaleString() : "—", warn: false },
+              { label: "Unduplicated Census", value: metrics.totalUnduplicatedCensus != null ? Number(metrics.totalUnduplicatedCensus).toLocaleString() : "—", warn: false },
+              { label: "Avg Length of Stay", value: metrics.avgLengthOfStay != null ? `${metrics.avgLengthOfStay} days` : "—", warn: metrics.avgLengthOfStay > 180 },
+              { label: "SN Visit Units (0551)", value: metrics.snVisitUnits != null ? Number(metrics.snVisitUnits).toLocaleString() : "—", warn: false },
+              { label: "RN Intensity (units/day)", value: metrics.rnUnitsPerDay != null ? metrics.rnUnitsPerDay : "—", warn: metrics.rnUnitsPerDay < 1.0 },
+              { label: "Gross Reimbursement", value: metrics.grossReimbursement != null ? `$${Number(metrics.grossReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: false },
+              { label: "Net Reimbursement", value: metrics.netReimbursement != null ? `$${Number(metrics.netReimbursement).toLocaleString(undefined, {maximumFractionDigits: 0})}` : "—", warn: false },
+            ].map((m, i) => (
+              <div key={i} className="rounded-xl p-3" style={{ background: m.warn ? "#FEF3E2" : "#F5F6F8" }}>
+                <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>{m.label}</div>
+                <div className="text-base font-mono mt-1" style={{ color: m.warn ? "#C98A1F" : "#16202E" }}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Critical Findings */}
+      {findings.length > 0 && (
+        <div className="rounded-2xl p-5 space-y-3"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} color="#D14343" />
+            <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">Critical Findings</span>
+          </div>
+          {findings.map((f, i) => (
+            <div key={i} className="flex gap-3 p-3 rounded-xl" style={{ background: "#F5F6F8" }}>
+              <span className="text-[10px] uppercase font-mono px-2 py-1 rounded shrink-0 h-fit"
+                style={{ background: severityColor(f.severity) + "1A", color: severityColor(f.severity) }}>
+                {f.severity}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <div className="text-xs font-mono" style={{ color: "#B8863F" }}>{f.category}</div>
+                  {f.source && <div className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "#E3E7ED", color: "#64708A" }}>{f.source}</div>}
+                </div>
+                <div className="text-sm" style={{ color: "#16202E" }}>{f.finding}</div>
+                <div className="text-sm mt-1" style={{ color: "#64708A" }}>→ {f.recommendation}</div>
+                {f.clawbackRisk > 0 && (
+                  <div className="mt-1.5 inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded"
+                    style={{ background: "#FDECEA", color: "#D14343" }}>
+                    <DollarSign size={11} />Clawback Risk: ${Number(f.clawbackRisk).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Category Drill-Down */}
+      {categories.length > 0 && (
+        <div className="space-y-3">
+          {categories.map((cat) => {
+            const open = openId === cat.id;
+            return (
+              <div key={cat.id} className="rounded-2xl overflow-hidden"
+                style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+                <button onClick={() => setOpenId(open ? null : cat.id)}
+                  className="w-full flex items-center gap-4 p-4 text-left">
+                  <ScoreRing score={cat.score} size={54} stroke={6} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-base">{cat.label}</span>
+                      {cat.source && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                          style={{ background: "#E3E7ED", color: "#64708A" }}>{cat.source}</span>
+                      )}
+                      {cat.clawbackAmount > 0 && (
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded"
+                          style={{ background: "#FDECEA", color: "#D14343" }}>
+                          🔴 ${Number(cat.clawbackAmount).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm mt-1 truncate" style={{ color: "#64708A" }}>{cat.summary}</p>
+                  </div>
+                  {open ? <ChevronDown size={18} color="#64708A" /> : <ChevronRight size={18} color="#64708A" />}
+                </button>
+                {open && (
+                  <div className="px-4 pb-5 pt-1 space-y-5" style={{ borderTop: "1px solid #E3E7ED" }}>
+                    {cat.factors?.length > 0 && (
+                      <div>
+                        <div className="text-xs uppercase tracking-widest font-mono mt-4 mb-2" style={{ color: "#64708A" }}>Scoring Factors</div>
+                        <div className="space-y-2">
+                          {cat.factors.map((f, i) => (
+                            <div key={i} className="flex items-start gap-3">
+                              <div className="w-10 shrink-0 text-right text-[11px] font-mono pt-0.5" style={{ color: "#8992A3" }}>{f.weight}%</div>
+                              <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: statusColor(f.status) }} />
+                              <div className="flex-1">
+                                <div className="text-sm" style={{ color: "#16202E" }}>{f.label}</div>
+                                <div className="text-xs mt-0.5" style={{ color: "#64708A" }}>{f.detail}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {cat.actions?.length > 0 && (
+                      <div>
+                        <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#B8863F" }}>Recommended Actions</div>
+                        <ul className="space-y-1.5">
+                          {cat.actions.map((a, i) => (
+                            <li key={i} className="text-sm flex gap-2" style={{ color: "#16202E" }}>
+                              <CheckCircle2 size={15} className="shrink-0 mt-0.5" color="#2E9E62" />{a}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <RecertificationTracker />
     </div>
   );
 }
 
 // ─── UPLOAD HUB ───────────────────────────────────────────────────────────────
-function UploadHub({ onPsrData, onCapData, hasPsr, hasCap }) {
-  const [psrLoading, setPsrLoading] = useState(false);
-  const [psrError, setPsrError] = useState(null);
-  const [capLoading, setCapLoading] = useState(false);
-  const [capError, setCapError] = useState(null);
+function UploadHub({ onAnalysisData, hasData }) {
+  const [files, setFiles] = useState([]);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [error, setError] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef();
 
-  const handlePSR = async (f) => {
-    if (!f || f.type !== "application/pdf") { setPsrError("Please upload a PDF file."); return; }
-    setPsrError(null); setPsrLoading(true);
-    try {
-      const text = await extractPDFText(f);
-      const truncated = text.substring(0, 5000);
-      const raw1 = await callClaude(PSR_PROMPT_1, `PS&R PROVIDER SUMMARY REPORT (Report Type 810) TEXT:\n\n${truncated}`, 1500);
-      const part1 = parseJSON(raw1);
-      const raw2 = await callClaude(PSR_PROMPT_2, `PS&R PROVIDER SUMMARY REPORT (Report Type 810) TEXT:\n\n${truncated}`, 1200);
-      const part2 = parseJSON(raw2);
-      const merged = {
-        ...part1,
-        categories: [...(part1.categories || []), ...(part2.categories || [])],
-        criticalFindings: part2.criticalFindings || [],
-      };
-      onPsrData(merged);
-    } catch (e) {
-      setPsrError("PS&R analysis error: " + e.message);
-    } finally {
-      setPsrLoading(false);
-    }
+  const onDrop = useCallback((e) => {
+    e.preventDefault(); setDragOver(false);
+    const dropped = Array.from(e.dataTransfer.files).filter(f => f.type === "application/pdf");
+    setFiles(prev => {
+      const existing = new Set(prev.map(f => f.name));
+      return [...prev, ...dropped.filter(f => !existing.has(f.name))];
+    });
+  }, []);
+
+  const onFileSelect = (e) => {
+    const selected = Array.from(e.target.files).filter(f => f.type === "application/pdf");
+    setFiles(prev => {
+      const existing = new Set(prev.map(f => f.name));
+      return [...prev, ...selected.filter(f => !existing.has(f.name))];
+    });
+    e.target.value = "";
   };
 
-  const handleCAP = async (f) => {
-    if (!f || f.type !== "application/pdf") { setCapError("Please upload a PDF file."); return; }
-    setCapError(null); setCapLoading(true);
+  const removeFile = (name) => setFiles(prev => prev.filter(f => f.name !== name));
+
+  const analyze = async () => {
+    if (files.length === 0) return;
+    setAnalyzing(true); setError(null);
     try {
-      const text = await extractPDFText(f);
-      const raw = await callClaude(BENEFICIARY_PROMPT, `BENEFICIARY COUNT SUMMARY REPORT (Report B51562) TEXT:\n\n${text.substring(0, 3000)}`, 1000);
+      const reportSummaries = {};
+      for (const file of files) {
+        setProgress(`Extracting text from ${file.name}…`);
+        const text = await extractPDFText(file);
+        const type = detectReportType(file.name, text);
+        reportSummaries[type] = (reportSummaries[type] || "") + `\n\n=== ${file.name} ===\n${text.substring(0, 3000)}`;
+      }
+
+      const combinedText = Object.entries(reportSummaries)
+        .map(([type, text]) => `\n\n====== ${type.toUpperCase()} REPORT ======\n${text}`)
+        .join("\n");
+
+      setProgress("Analyzing all reports with AI — this may take 45-60 seconds…");
+      const raw = await callClaude(buildMasterPrompt(reportSummaries), combinedText.substring(0, 8000), 2000);
       const result = parseJSON(raw);
-      onCapData(result);
+      onAnalysisData(result);
     } catch (e) {
-      setCapError("Beneficiary report error: " + e.message);
+      setError("Analysis error: " + e.message);
     } finally {
-      setCapLoading(false);
+      setAnalyzing(false); setProgress("");
     }
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <div style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-2xl">Report Upload Center</div>
         <p className="text-sm mt-1" style={{ color: "#64708A" }}>
-          Upload your CMS PS&R reports directly from CASPER. Each report populates the Dashboard independently — upload one or both.
+          Upload any combination of CMS reports. The more reports you provide, the more accurate your SSVI score and compliance dashboard becomes.
         </p>
       </div>
 
-      {/* How to get these reports */}
-      <div className="rounded-xl p-4" style={{ background: "#F5F6F8", border: "1px solid #E3E7ED" }}>
-        <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#64708A" }}>
-          How to pull these reports from CMS CASPER
+      {/* Multi-file drop zone */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        onClick={() => !analyzing && fileRef.current?.click()}
+        className="rounded-2xl p-10 flex flex-col items-center justify-center gap-4 text-center cursor-pointer transition-all"
+        style={{
+          background: dragOver ? "#F7F0E1" : "#FFFFFF",
+          border: `2px dashed ${dragOver ? "#B8863F" : "#C7CDD8"}`,
+          boxShadow: "0 1px 3px rgba(16,24,40,0.04)",
+        }}>
+        <input ref={fileRef} type="file" accept=".pdf" multiple className="hidden" onChange={onFileSelect} />
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#F7F0E1" }}>
+          <Files size={28} color="#B8863F" />
         </div>
-        <div className="space-y-1.5">
-          {[
-            "Log into EIDM at https://eidm.cms.gov",
-            "Navigate to CASPER → Hospice Reports",
-            "For PS&R Summary: Request Report Type 810 (Provider Summary Report)",
-            "For Beneficiary Count: Request Report Type B51562 (Beneficiary Count Summary)",
-            "Download as PDF and upload here",
-          ].map((step, i) => (
-            <div key={i} className="flex gap-2 text-xs font-mono" style={{ color: "#64708A" }}>
-              <span style={{ color: "#B8863F" }}>{i + 1}.</span>
-              <span>{step}</span>
+        <div>
+          <div style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-xl">
+            Drop all your reports here
+          </div>
+          <div className="text-sm mt-1" style={{ color: "#64708A" }}>
+            Upload multiple PDFs at once — PS&R, PEPPER, CAHPS, QAPI, Survey Results, Policy Manuals, CMS Public Data
+          </div>
+          <div className="text-xs mt-2 font-mono" style={{ color: "#8992A3" }}>
+            PDF format only · Multiple files supported · AI auto-detects report type
+          </div>
+        </div>
+      </div>
+
+      {/* Accepted report types reference */}
+      <div className="rounded-xl p-4" style={{ background: "#F5F6F8", border: "1px solid #E3E7ED" }}>
+        <div className="text-xs uppercase tracking-widest font-mono mb-3" style={{ color: "#64708A" }}>
+          Accepted Report Types
+        </div>
+        <div className="grid md:grid-cols-2 gap-2">
+          {REPORT_TYPES.map((r) => (
+            <div key={r.id} className="flex items-start gap-2">
+              <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: r.color }} />
+              <div>
+                <span className="text-xs font-mono font-medium" style={{ color: "#16202E" }}>{r.label}</span>
+                <span className="text-xs font-mono" style={{ color: "#8992A3" }}> — {r.desc}</span>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {(hasPsr || hasCap) && (
+      {/* Selected files */}
+      {files.length > 0 && (
+        <div className="rounded-2xl p-5"
+          style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
+          <div className="flex items-center justify-between mb-3">
+            <div style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">
+              {files.length} file{files.length > 1 ? "s" : ""} ready to analyze
+            </div>
+            <button onClick={() => setFiles([])} className="text-xs font-mono underline" style={{ color: "#64708A" }}>
+              Clear all
+            </button>
+          </div>
+          <div className="space-y-2 mb-4">
+            {files.map((f) => {
+              const type = REPORT_TYPES.find(r => r.id === detectReportType(f.name, ""));
+              return (
+                <div key={f.name} className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{ background: "#F5F6F8" }}>
+                  <FileText size={15} color="#B8863F" className="shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate" style={{ color: "#16202E" }}>{f.name}</div>
+                    <div className="text-[11px] font-mono mt-0.5" style={{ color: "#64708A" }}>
+                      {type?.label || "Auto-detecting"} · {(f.size / 1024).toFixed(0)} KB
+                    </div>
+                  </div>
+                  <button onClick={() => removeFile(f.name)}>
+                    <X size={14} color="#8992A3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {analyzing ? (
+            <div className="rounded-xl p-4 flex items-center gap-3"
+              style={{ background: "#FBF3E4", border: "1px solid #EAD3A3" }}>
+              <Loader2 size={18} color="#B8863F" className="animate-spin shrink-0" />
+              <div>
+                <div className="text-sm font-medium" style={{ color: "#B8863F" }}>{progress}</div>
+                <div className="text-xs font-mono mt-0.5" style={{ color: "#8992A3" }}>
+                  AI is reading all reports simultaneously and generating your compliance scorecard
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button onClick={analyze}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium"
+              style={{ background: "#14213D", color: "#F3F5F8" }}>
+              <Sparkles size={16} />
+              Analyze {files.length} Report{files.length > 1 ? "s" : ""} — Generate Compliance Dashboard
+            </button>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-xl p-4 flex items-start gap-3" style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
+          <AlertCircle size={16} color="#D14343" className="shrink-0 mt-0.5" />
+          <span className="text-sm flex-1" style={{ color: "#B23A2E" }}>{error}</span>
+          <button onClick={() => setError(null)}><X size={14} color="#B23A2E" /></button>
+        </div>
+      )}
+
+      {hasData && (
         <div className="rounded-xl p-4 flex items-center gap-3"
           style={{ background: "#EAF6EF", border: "1px solid #A8DFC0" }}>
           <CheckCircle2 size={18} color="#2E9E62" className="shrink-0" />
           <div className="text-sm flex-1" style={{ color: "#1A6E41" }}>
-            <strong>{[hasPsr && "PS&R Report 810", hasCap && "Beneficiary Count"].filter(Boolean).join(" + ")} loaded.</strong> Switch to Dashboard to view your compliance scorecard and CAP analysis.
+            <strong>Analysis complete.</strong> View your full compliance scorecard on the Dashboard tab.
           </div>
+          <button onClick={() => onAnalysisData(null)}
+            className="text-xs font-mono px-3 py-1.5 rounded-lg"
+            style={{ background: "#FDECEA", color: "#D14343", border: "1px solid #F3B8AC" }}>
+            Clear Data
+          </button>
         </div>
       )}
 
-      <div>
-        <div className="text-xs uppercase tracking-widest font-mono mb-3" style={{ color: "#B8863F" }}>
-          Active — AI Analysis Available
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <UploadZone
-              label="PS&R Summary Report"
-              description="Report Type 810 — Provider Summary Report from CASPER"
-              badge="Report Type 810"
-              icon={BarChart3}
-              onFile={handlePSR}
-              loading={psrLoading}
-              hasResult={hasPsr} />
-            {psrError && (
-              <div className="mt-2 rounded-xl p-3 flex items-start gap-2" style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
-                <AlertCircle size={15} color="#D14343" className="shrink-0 mt-0.5" />
-                <span className="text-sm flex-1" style={{ color: "#B23A2E" }}>{psrError}</span>
-                <button onClick={() => setPsrError(null)}><X size={14} color="#B23A2E" /></button>
-              </div>
-            )}
+      {/* EIDM/CASPER Widget */}
+      <div className="rounded-2xl p-6"
+        style={{ background: "#14213D", border: "1px solid #1E2C4E" }}>
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "#1E2C4E" }}>
+            <ExternalLink size={18} color="#B8863F" />
           </div>
-          <div>
-            <UploadZone
-              label="Beneficiary Count Summary"
-              description="Report B51562 — Required for accurate CAP calculation"
-              badge="Report B51562"
-              icon={PieChart}
-              onFile={handleCAP}
-              loading={capLoading}
-              hasResult={hasCap} />
-            {capError && (
-              <div className="mt-2 rounded-xl p-3 flex items-start gap-2" style={{ background: "#FDECEA", border: "1px solid #F3B8AC" }}>
-                <AlertCircle size={15} color="#D14343" className="shrink-0 mt-0.5" />
-                <span className="text-sm flex-1" style={{ color: "#B23A2E" }}>{capError}</span>
-                <button onClick={() => setCapError(null)}><X size={14} color="#B23A2E" /></button>
-              </div>
-            )}
+          <div className="flex-1">
+            <div style={{ fontFamily: "Fraunces, serif", color: "#F3F5F8" }} className="text-lg">
+              EIDM / CASPER Portal
+            </div>
+            <div className="text-sm mt-1" style={{ color: "#93A0B8" }}>
+              Log into CMS EIDM to pull your PS&R reports, PEPPER, survey results, and Hospice Compare data directly from CASPER.
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {[
+                { label: "EIDM Login", url: "https://eidm.cms.gov", desc: "Enterprise Identity Management — main CMS login" },
+                { label: "CASPER Reports", url: "https://casper.cms.gov", desc: "Pull PS&R 810, Beneficiary Count B51562, PEPPER" },
+                { label: "Hospice Compare", url: "https://www.medicare.gov/care-compare", desc: "Your publicly posted SSVI score and quality measures" },
+                { label: "SSVI Public Data", url: "https://www.cms.gov/medicare/quality/hospice", desc: "Download the FY2025 SSVI provider-level data file" },
+              ].map((link) => (
+                <a key={link.label} href={link.url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-2.5 rounded-lg transition-colors"
+                  style={{ background: "#1E2C4E" }}
+                  onClick={(e) => e.stopPropagation()}>
+                  <ExternalLink size={13} color="#B8863F" className="shrink-0" />
+                  <div>
+                    <div className="text-xs font-mono font-medium" style={{ color: "#F3F5F8" }}>{link.label}</div>
+                    <div className="text-[11px] font-mono" style={{ color: "#6B7A99" }}>{link.desc}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       </div>
-
-      <div>
-        <div className="text-xs uppercase tracking-widest font-mono mb-3" style={{ color: "#64708A" }}>Coming Soon</div>
-        <div className="grid md:grid-cols-3 gap-4">
-          <UploadZone label="Discharge Report" description="Report Type 832 — Live discharge rates and patterns for SSVI" badge="Report Type 832" icon={FileText} comingSoon onFile={() => {}} />
-          <UploadZone label="Cost Reports" description="Annual CMS cost report — visit costs and overhead benchmarking" icon={DollarSign} comingSoon onFile={() => {}} />
-          <UploadZone label="EIDM / CASPER" description="Direct portal integration — auto-pull reports without downloading" icon={ArrowRight} comingSoon onFile={() => {}} />
-        </div>
-      </div>
-
-      {(hasPsr || hasCap) && (
-        <div className="rounded-2xl p-4" style={{ background: "#F5F6F8", border: "1px solid #E3E7ED" }}>
-          <div className="text-xs font-mono mb-2" style={{ color: "#64708A" }}>Clear uploaded data</div>
-          <div className="flex gap-3">
-            {hasPsr && (
-              <button onClick={() => onPsrData(null)}
-                className="text-xs font-mono px-3 py-1.5 rounded-lg"
-                style={{ background: "#FDECEA", color: "#D14343", border: "1px solid #F3B8AC" }}>
-                Clear PS&R Data
-              </button>
-            )}
-            {hasCap && (
-              <button onClick={() => onCapData(null)}
-                className="text-xs font-mono px-3 py-1.5 rounded-lg"
-                style={{ background: "#FDECEA", color: "#D14343", border: "1px solid #F3B8AC" }}>
-                Clear Beneficiary Data
-              </button>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -881,7 +932,7 @@ function RecertificationTracker() {
       {open && (
         <div className="px-5 pb-6 pt-1 space-y-4" style={{ borderTop: "1px solid #E3E7ED" }}>
           <p className="text-sm" style={{ color: "#64708A" }}>
-            Medicare requires a Face-to-Face (FTF) encounter prior to the 180-day recertification. Missing by one day causes 100% claim suspension.
+            Medicare requires a Face-to-Face encounter prior to the 180-day recertification. Missing by one day causes 100% claim suspension.
           </p>
           {MOCK_PATIENTS.map((p, i) => {
             const pct = (p.day / p.totalDays) * 100;
@@ -911,7 +962,7 @@ function RecertificationTracker() {
                 </div>
                 <div className="flex justify-between mt-1">
                   <span className="text-[10px] font-mono" style={{ color: "#8992A3" }}>Day 0</span>
-                  <span className="text-[10px] font-mono" style={{ color: "#8992A3" }}>Day 180 — Recert</span>
+                  <span className="text-[10px] font-mono" style={{ color: "#8992A3" }}>Day 180</span>
                 </div>
               </div>
             );
@@ -940,14 +991,12 @@ function ChartReview() {
     if (!text.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const system = `You are a hospice compliance auditor. Audit this chart against Medicare Hospice CoP. Respond with ONLY valid JSON starting with { and ending with }. No other text. Format: {"overallAssessment":"2 sentence summary","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]} Maximum 3 issues and 2 strengths.`;
+      const system = `You are a hospice compliance auditor. Audit this chart against Medicare Hospice CoP. Start with { end with }. No other text. Format: {"overallAssessment":"2 sentence summary","issues":[{"severity":"high","category":"string","finding":"string","recommendation":"string"}],"strengths":["string"]} Max 3 issues, 2 strengths.`;
       const raw = await callClaude(system, text, 2000);
       setResult(parseJSON(raw));
     } catch (e) {
       setError("Analysis error: " + e.message);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
@@ -958,7 +1007,7 @@ function ChartReview() {
           <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">Chart Auditor</span>
         </div>
         <p className="text-sm mb-3" style={{ color: "#64708A" }}>
-          Paste chart text, certifications, or IDG notes. Claude flags missing elements and signature gaps against hospice CoP norms.
+          Paste chart text, certifications, or IDG notes. Claude flags missing elements and gaps against hospice CoP norms.
         </p>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={9}
           className="w-full rounded-lg p-3 text-sm font-mono focus:outline-none"
@@ -1028,19 +1077,19 @@ const REG_UPDATES = [
     checklist:["Update the intake SOP so the addendum request trigger fires at election.","Retrain admissions staff on the 3-day window.","Audit the last 30 days of elections for addendum timing gaps."] },
   { id:"r2", date:"2026-06-10", source:"CMS", tag:"Payment / Billing", severity:"high",
     title:"FY2027 Hospice Proposed Rule — SSVI introduced as public scoring tool",
-    summary:"CMS introduced the Service & Spending Variation Index (SSVI), a 0-16 composite score built from claims data. Scores are posted publicly on the CMS Hospice Center webpage. Utilization Score (0-8) is based on RN visit intensity, length of stay patterns, and live discharge rates. Non-Hospice Spending Score (0-8) is based on Part A/B spending for enrolled beneficiaries.",
-    impact:"A score of 10 or above signals meaningful deviation and may trigger additional program integrity review. CMS Administrator Dr. Oz framed this as a tool to identify misuse of Medicare dollars.",
-    checklist:["Pull your agency SSVI score from the CMS Hospice Center webpage.","Upload your PS&R Report 810 to AIHospiceOS to estimate your SSVI Utilization Score.","Pull Report 832 from CASPER for discharge data to improve SSVI accuracy.","Review your RN visit intensity — under 1.0 units/day is an SSVI risk flag.","Brief your compliance team on the 9 SSVI measures before the final rule."] },
+    summary:"CMS introduced the SSVI (0-16 scale) built from claims data. Utilization Score (0-8) covers RN visit intensity, LOS, live discharge rates, GIP ratio, weekend visits. Non-Hospice Spending Score (0-8) covers Part A/B spending for enrolled beneficiaries. Scores posted publicly on CMS Hospice Center webpage.",
+    impact:"Scores ≥10 signal meaningful deviation and may trigger additional program integrity review. Upload your PS&R and CMS Public Data to AIHospiceOS to estimate your score now.",
+    checklist:["Pull your SSVI score from CMS Hospice Center webpage.","Upload PS&R 810 + Beneficiary Count to AIHospiceOS for score estimate.","Upload PEPPER report for outlier pattern analysis.","Review RN visit intensity — under 1.0 units/day (Rev 0551 ÷ Medicare days) is an SSVI risk flag.","Pull CMS public SSVI data file and upload to get your actual published score."] },
   { id:"r3", date:"2026-05-14", source:"OIG", tag:"Program Integrity", severity:"medium",
     title:"OIG work plan adds hospice GIP level-of-care review",
-    summary:"The OIG added a work plan item focused on GIP level-of-care determinations — reviewing whether documentation supports the acuity required for GIP billing.",
-    impact:"GIP documentation is a near-term audit target industry-wide.",
-    checklist:["Pre-emptively audit open and recent GIP stays for acuity documentation.","Share OIG focus area with the DON and billing team."] },
+    summary:"OIG focused on GIP level-of-care determinations — whether documentation supports acuity required for GIP billing.",
+    impact:"GIP documentation is a near-term audit target. Pre-emptive auditing is strongly advised.",
+    checklist:["Audit all open and recent GIP stays for acuity documentation.","Share OIG focus area with DON and billing team as standing agenda item."] },
   { id:"r4", date:"2026-04-30", source:"CMS", tag:"Survey / Oversight", severity:"medium",
     title:"CMS posts provider-level SSVI scores publicly on Hospice Center webpage",
-    summary:"Provider-level SSVI data for FY2024 and FY2025 is now publicly available. FY2025 national average was 6.42, median 7. 833 hospices (12.5%) scored 10 or above.",
-    impact:"Referral sources, families, and payers can now see your SSVI score publicly.",
-    checklist:["Look up your agency SSVI score on the CMS Hospice Center webpage.","If your score is 8 or above, develop a remediation plan.","Document your response to SSVI outlier measures in your QAPI program."] },
+    summary:"FY2024 and FY2025 SSVI scores are publicly posted. FY2025 national average: 6.42, median: 7. 833 hospices (12.5%) scored ≥10.",
+    impact:"Referral sources, families, and payers can see your SSVI score. High scores are visible to anyone researching your agency.",
+    checklist:["Look up your SSVI score on CMS Hospice Center webpage.","If score ≥8, develop a remediation plan before next reporting cycle.","Document SSVI outlier response in your QAPI program.","Download CMS SSVI public data file and upload to AIHospiceOS."] },
 ];
 
 function RegulatoryWatch() {
@@ -1105,15 +1154,19 @@ function RegulatoryWatch() {
   );
 }
 
-// ─── COPILOT (hidden from nav) ────────────────────────────────────────────────
-function Copilot() {
+// ─── COPILOT ──────────────────────────────────────────────────────────────────
+function Copilot({ analysisData }) {
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "I'm your compliance copilot. Ask me about your PS&R metrics, SSVI score, CAP exposure, or any hospice regulatory question." },
+    { role: "assistant", text: "I'm your compliance copilot. Ask me about your PS&R metrics, SSVI score, CAP exposure, PEPPER outliers, CAHPS scores, survey deficiencies, or any hospice regulatory question." },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+
+  const context = analysisData
+    ? `Current agency data: ${analysisData.agencyName}, SSVI ${analysisData.ssviScore}/16, overall compliance score ${analysisData.overallComplianceScore}/100, CAP exposure $${analysisData.capData?.capExposure || 0}, reports analyzed: ${analysisData.reportsAnalyzed?.join(", ")}.`
+    : "No reports uploaded yet.";
 
   const send = async () => {
     const q = input.trim();
@@ -1122,7 +1175,7 @@ function Copilot() {
     setMessages((m) => [...m, { role: "user", text: q }]);
     setLoading(true);
     try {
-      const system = `You are the AI Compliance Copilot inside AIHospiceOS for hospice CEOs, owners, and Directors of Clinical Services. Answer hospice regulatory, PS&R Report 810, Beneficiary Count Summary B51562, SSVI scoring, MAC/RAC audit, and CAP exposure questions clearly for an executive audience. Keep answers under 150 words, conversational but precise. Reference specific revenue codes (0551 SN visits, 0651 RHC days, 0571 aide visits) and CMS report types when relevant.`;
+      const system = `You are the AI Compliance Copilot inside AIHospiceOS for hospice CEOs, owners, and Directors of Clinical Services. ${context} Answer questions about PS&R Report 810, Beneficiary Count B51562, PEPPER, CAHPS, QAPI, survey deficiencies, SSVI scoring, MAC/RAC audits, CAP exposure, and Medicare Hospice CoP clearly for an executive audience. Reference specific revenue codes (0551 SN visits, 0651 RHC days), report types, and dollar amounts where relevant. Keep answers under 150 words, conversational but precise.`;
       const reply = await callClaude(system, q, 500);
       setMessages((m) => [...m, { role: "assistant", text: reply.trim() }]);
     } catch (e) {
@@ -1136,6 +1189,12 @@ function Copilot() {
       <div className="p-4 flex items-center gap-2" style={{ borderBottom: "1px solid #E3E7ED" }}>
         <MessageSquare size={16} color="#B8863F" />
         <span style={{ fontFamily: "Fraunces, serif", color: "#16202E" }} className="text-lg">Compliance Copilot</span>
+        {analysisData && (
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded ml-auto"
+            style={{ background: "#EAF6EF", color: "#2E9E62" }}>
+            Aware of your uploaded reports
+          </span>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((m, i) => (
@@ -1158,7 +1217,7 @@ function Copilot() {
       <div className="p-3 flex gap-2" style={{ borderTop: "1px solid #E3E7ED" }}>
         <input value={input} onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Ask about PS&R metrics, SSVI, CAP exposure…"
+          placeholder="Ask about SSVI, CAP exposure, survey findings, PEPPER…"
           className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
           style={{ background: "#F5F6F8", border: "1px solid #E3E7ED", color: "#16202E" }} />
         <button onClick={send} disabled={loading}
@@ -1177,10 +1236,11 @@ const TABS = [
   { id: "upload", label: "Report Upload", icon: Upload },
   { id: "chart", label: "Chart Review", icon: FileText },
   { id: "reg", label: "Regulatory Watch", icon: BookOpen },
+  { id: "copilot", label: "Copilot", icon: MessageSquare },
 ];
 
 const CONTENT_MAX_W = {
-  dashboard: "max-w-5xl", upload: "max-w-5xl",
+  dashboard: "max-w-5xl", upload: "max-w-4xl",
   chart: "max-w-4xl", reg: "max-w-4xl", copilot: "max-w-2xl",
 };
 
@@ -1192,7 +1252,7 @@ function Logo() {
       </div>
       <div>
         <div style={{ fontFamily: "Fraunces, serif", color: "#F3F5F8" }} className="text-xl leading-none">AIHospiceOS</div>
-        <div className="text-[11px] font-mono mt-0.5" style={{ color: "#93A0B8" }}>PS&amp;R · CAP · SSVI · Audit Readiness</div>
+        <div className="text-[11px] font-mono mt-0.5" style={{ color: "#93A0B8" }}>PS&amp;R · CAP · SSVI · PEPPER · CAHPS</div>
       </div>
     </div>
   );
@@ -1223,16 +1283,10 @@ function InstallBanner() {
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function AIHospiceOS() {
   const [tab, setTab] = useState("dashboard");
-  const [psrData, setPsrData] = useState(null);
-  const [capData, setCapData] = useState(null);
+  const [analysisData, setAnalysisData] = useState(null);
 
-  const handlePsrData = (data) => {
-    setPsrData(data);
-    if (data) setTab("dashboard");
-  };
-
-  const handleCapData = (data) => {
-    setCapData(data);
+  const handleAnalysisData = (data) => {
+    setAnalysisData(data);
     if (data) setTab("dashboard");
   };
 
@@ -1256,25 +1310,26 @@ export default function AIHospiceOS() {
             );
           })}
         </nav>
-        {(psrData || capData) && (
+        {analysisData && (
           <div className="mt-4 rounded-lg px-3 py-2" style={{ background: "#1E2C4E" }}>
             <div className="text-[11px] font-mono" style={{ color: "#93A0B8" }}>Loaded agency</div>
             <div className="text-xs font-medium mt-0.5 truncate" style={{ color: "#F3F5F8" }}>
-              {psrData?.agencyName || capData?.agencyName || "Unknown"}
+              {analysisData.agencyName || "Unknown"}
             </div>
-            {psrData?.ssviScore != null && (
-              <div className="text-[11px] font-mono mt-1" style={{ color: ssviColor(psrData.ssviScore) }}>
-                SSVI: {psrData.ssviScore}/16 · {ssviLabel(psrData.ssviScore)}
+            {analysisData.ssviScore != null && (
+              <div className="text-[11px] font-mono mt-1" style={{ color: ssviColor(analysisData.ssviScore) }}>
+                SSVI: {analysisData.ssviScore}/16 · {ssviLabel(analysisData.ssviScore)}
               </div>
             )}
-            <div className="flex gap-1 mt-1.5 flex-wrap">
-              {psrData && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "#2E9E6230", color: "#2E9E62" }}>PS&R 810 ✓</span>}
-              {capData && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: "#2E9E6230", color: "#2E9E62" }}>B51562 ✓</span>}
-            </div>
+            {analysisData.reportsAnalyzed?.length > 0 && (
+              <div className="text-[10px] font-mono mt-1" style={{ color: "#6B7A99" }}>
+                {analysisData.reportsAnalyzed.length} report{analysisData.reportsAnalyzed.length > 1 ? "s" : ""} loaded
+              </div>
+            )}
           </div>
         )}
         <div className="mt-auto text-[11px] font-mono leading-relaxed" style={{ color: "#6B7A99" }}>
-          Executive compliance platform for hospice CEOs &amp; Directors. Scored against SSVI benchmarks.
+          Executive compliance platform for hospice CEOs &amp; Directors.
         </div>
       </aside>
 
@@ -1285,18 +1340,16 @@ export default function AIHospiceOS() {
       <main className="flex-1 min-w-0 overflow-y-auto">
         <InstallBanner />
         <div className={`${CONTENT_MAX_W[tab] || "max-w-5xl"} mx-auto px-4 md:px-8 py-4 md:py-8 pb-28 md:pb-10`}>
-          {tab === "dashboard" && <Dashboard psrData={psrData} capData={capData} />}
+          {tab === "dashboard" && <Dashboard analysisData={analysisData} />}
           {tab === "upload" && (
             <UploadHub
-              onPsrData={handlePsrData}
-              onCapData={handleCapData}
-              hasPsr={!!psrData}
-              hasCap={!!capData}
+              onAnalysisData={handleAnalysisData}
+              hasData={!!analysisData}
             />
           )}
           {tab === "chart" && <ChartReview />}
           {tab === "reg" && <RegulatoryWatch />}
-          {tab === "copilot" && <Copilot />}
+          {tab === "copilot" && <Copilot analysisData={analysisData} />}
         </div>
       </main>
 
