@@ -11,7 +11,10 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const ws = require('ws');
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  realtime: { transport: ws }
+});
 
 async function main() {
   console.log('Step 1: Downloading CMS SSVI ZIP from cms.gov...');
