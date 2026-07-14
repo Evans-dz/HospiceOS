@@ -18,8 +18,9 @@ jobs:
       - name: Install dependencies
         run: npm install xlsx node-fetch@2 @supabase/supabase-js adm-zip ws
 
-      - name: Download and parse CMS SSVI data
+     - name: Download and parse CMS SSVI data
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node .github/scripts/load-ssvi.js
