@@ -142,6 +142,37 @@ const severityColor = (s) => s === "high" ? "#D14343" : s === "medium" ? "#C98A1
 const scoreColor = (s) => s >= 85 ? "#2E9E62" : s >= 70 ? "#C98A1F" : "#D14343";
 const ssviColor = (s) => s <= 4 ? "#2E9E62" : s <= 7 ? "#C98A1F" : "#D14343";
 const ssviLabel = (s) => s <= 4 ? "Low Risk" : s <= 7 ? "Moderate Risk" : "High Risk";
+
+// Choose which fiscal year to display for a CCN row. Prefer FY2025; fall back to FY2024
+// when FY2025 hasn't been published yet (417 hospices are FY2024-only). Returns null only
+// when neither year exists. Everything downstream reads from this so the year is chosen once.
+function resolveSSVI(row) {
+  if (!row) return null;
+  const has2025 = row.fy2025_total_ssvi != null;
+  const year = has2025 ? 2025 : (row.fy2024_total_ssvi != null ? 2024 : null);
+  if (year == null) return null;
+  const p = `fy${year}`;
+  return {
+    year,
+    isFallback: !has2025,               // true = we're showing FY2024 because FY2025 isn't out
+    total: row[`${p}_total_ssvi`],
+    utilization: row[`${p}_utilization_score`],
+    spending: row[`${p}_spending_score`],
+    priorYear: has2025 ? 2024 : null,   // only set a prior year when the displayed year is 2025
+    priorTotal: has2025 ? row.fy2024_total_ssvi : null,
+    flags: {
+      no_chc_gip: row[`${p}_no_chc_gip`],
+      nursing_facility: row[`${p}_nursing_facility`],
+      last_two_days: row[`${p}_last_two_days`],
+      los_180: row[`${p}_los_180`],
+      live_discharge: row[`${p}_live_discharge`],
+      sn_minutes: row[`${p}_sn_minutes`],
+      weekend_visits: row[`${p}_weekend_visits`],
+      return_7days: row[`${p}_return_7days`],
+    },
+  };
+}
+
 const statusColor = (s) => s === "good" ? "#2E9E62" : s === "warn" ? "#C98A1F" : "#D14343";
 const fmt = (n, dec = 0) => n != null ? Number(n).toLocaleString(undefined, { maximumFractionDigits: dec }) : "—";
 const fmtD = (n) => n != null ? `$${fmt(n)}` : "—";
@@ -359,30 +390,38 @@ function CCNLookup({ onSSVIData, compact = false }) {
         </div>
       )}
 
-      {result && (
-        <div className="rounded-xl p-4" style={{ background: "#EAF6EF", border: "1px solid #A8DFC0" }}>
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle2 size={16} color="#2E9E62" />
-            <span className="text-sm font-medium" style={{ color: "#1A6E41" }}>
-              Found: {result.hospice_name} · CCN {result.ccn}
-            </span>
-          </div>
-          <div className="flex gap-4 flex-wrap">
-            <div className="text-xs font-mono" style={{ color: "#1A6E41" }}>
-              FY2025 SSVI: <strong>{result.fy2025_total_ssvi ?? "—"}/16</strong>
-              {result.fy2025_total_ssvi != null && ` (${ssviLabel(result.fy2025_total_ssvi)})`}
+      {result && (() => {
+        const r = resolveSSVI(result);
+        return (
+          <div className="rounded-xl p-4" style={{ background: "#EAF6EF", border: "1px solid #A8DFC0" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 size={16} color="#2E9E62" />
+              <span className="text-sm font-medium" style={{ color: "#1A6E41" }}>
+                Found: {result.hospice_name} · CCN {result.ccn}
+              </span>
             </div>
-            <div className="text-xs font-mono" style={{ color: "#1A6E41" }}>
-              FY2024 SSVI: <strong>{result.fy2024_total_ssvi ?? "—"}/16</strong>
+            <div className="flex gap-4 flex-wrap">
+              <div className="text-xs font-mono" style={{ color: "#1A6E41" }}>
+                FY2025 SSVI: <strong>{result.fy2025_total_ssvi ?? "—"}/16</strong>
+                {result.fy2025_total_ssvi != null && ` (${ssviLabel(result.fy2025_total_ssvi)})`}
+              </div>
+              <div className="text-xs font-mono" style={{ color: "#1A6E41" }}>
+                FY2024 SSVI: <strong>{result.fy2024_total_ssvi ?? "—"}/16</strong>
+              </div>
+              {result.fy2025_total_ssvi != null && result.fy2024_total_ssvi != null && (
+                <div className="text-xs font-mono" style={{ color: result.fy2025_total_ssvi > result.fy2024_total_ssvi ? "#D14343" : "#2E9E62" }}>
+                  {result.fy2025_total_ssvi > result.fy2024_total_ssvi ? "↑" : "↓"} {Math.abs(result.fy2025_total_ssvi - result.fy2024_total_ssvi)} pts year-over-year
+                </div>
+              )}
             </div>
-            {result.fy2025_total_ssvi != null && result.fy2024_total_ssvi != null && (
-              <div className="text-xs font-mono" style={{ color: result.fy2025_total_ssvi > result.fy2024_total_ssvi ? "#D14343" : "#2E9E62" }}>
-                {result.fy2025_total_ssvi > result.fy2024_total_ssvi ? "↑" : "↓"} {Math.abs(result.fy2025_total_ssvi - result.fy2024_total_ssvi)} pts year-over-year
+            {r?.isFallback && (
+              <div className="text-xs font-mono mt-2" style={{ color: "#7A5700" }}>
+                FY2025 not yet published by CMS — showing FY2024 as the latest year ({ssviLabel(r.total)}, {r.total}/16).
               </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -392,33 +431,41 @@ function SSVIBreakdownPanel({ ssviData, estimatedData }) {
   const [open, setOpen] = useState(true);
 
   const hasReal = ssviData != null;
-  const score25 = hasReal ? ssviData.fy2025_total_ssvi : estimatedData?.ssviScore;
-  const util25 = hasReal ? ssviData.fy2025_utilization_score : estimatedData?.ssviUtilizationScore;
-  const spend25 = hasReal ? ssviData.fy2025_spending_score : estimatedData?.ssviSpendingScore;
-  const score24 = hasReal ? ssviData.fy2024_total_ssvi : null;
+  const resolved = hasReal ? resolveSSVI(ssviData) : null;
 
-  if (score25 == null && score24 == null) return null;
+  // Displayed values: real (from the resolved year) when we have a CCN row, else PS&R estimate.
+  const dispScore  = hasReal ? resolved?.total : estimatedData?.ssviScore;
+  const dispUtil   = hasReal ? resolved?.utilization : estimatedData?.ssviUtilizationScore;
+  const dispSpend  = hasReal ? resolved?.spending : estimatedData?.ssviSpendingScore;
+  const dispYear   = resolved?.year ?? 2025;
+  const isFallback = resolved?.isFallback ?? false;
+  const priorYear  = resolved?.priorYear;
+  const priorTotal = resolved?.priorTotal;
 
-  const getMeasureStatus = (key, fy = "fy2025") => {
-    if (!hasReal) return null;
-    return ssviData[`${fy}_${key}`];
+  if (dispScore == null && priorTotal == null) return null;
+
+  const getMeasureStatus = (key) => {
+    if (!hasReal || !resolved) return null;
+    return resolved.flags[key];
   };
+
+  const showYoY = !isFallback && dispScore != null && priorTotal != null;
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #E3E7ED", boxShadow: "0 1px 3px rgba(16,24,40,0.04)" }}>
       <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between p-5 text-left">
         <div className="flex items-center gap-3">
-          <SSVIRing score={score25 || 0} size={56} stroke={6} />
+          <SSVIRing score={dispScore || 0} size={56} stroke={6} />
           <div>
             <div className="text-xs uppercase tracking-widest font-mono" style={{ color: "#64708A" }}>SSVI — Service &amp; Spending Variation Index</div>
             <div className="text-lg mt-0.5" style={{ fontFamily: "Fraunces, serif", color: "#16202E" }}>
-              {ssviLabel(score25 || 0)} · {score25 ?? "—"}/16
+              {ssviLabel(dispScore || 0)} · {dispScore ?? "—"}/16
               {!hasReal && <span className="text-sm font-mono ml-2" style={{ color: "#64708A" }}>(estimated from PS&R)</span>}
-              {hasReal && <span className="text-xs font-mono ml-2 px-2 py-0.5 rounded" style={{ background: "#EAF6EF", color: "#2E9E62" }}>✓ CMS Published Score</span>}
+              {hasReal && <span className="text-xs font-mono ml-2 px-2 py-0.5 rounded" style={{ background: "#EAF6EF", color: "#2E9E62" }}>✓ CMS Published · FY{dispYear}</span>}
             </div>
             <div className="text-xs font-mono mt-0.5" style={{ color: "#64708A" }}>
               National avg: 6.42 · Median: 7 · Scores ≥10 trigger CMS program integrity review
-              {score24 != null && ` · FY2024: ${score24}/16`}
+              {priorTotal != null && ` · FY${priorYear}: ${priorTotal}/16`}
             </div>
           </div>
         </div>
@@ -427,16 +474,25 @@ function SSVIBreakdownPanel({ ssviData, estimatedData }) {
 
       {open && (
         <div className="px-5 pb-6 pt-1 space-y-5" style={{ borderTop: "1px solid #E3E7ED" }}>
+          {/* FY2024 fallback notice */}
+          {isFallback && (
+            <div className="rounded-xl p-3" style={{ background: "#FEF3E2", border: "1px solid #F0C87A" }}>
+              <div className="text-xs font-mono" style={{ color: "#7A5700" }}>
+                CMS has not published an FY2025 SSVI for this hospice yet. Showing the most recent published year, <strong>FY2024</strong>. All scores and measure flags below reflect FY2024 claims.
+              </div>
+            </div>
+          )}
+
           {/* Subscores */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl p-4" style={{ background: "#F5F6F8" }}>
               <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>Utilization Score</div>
-              <div className="text-2xl font-mono mt-1" style={{ color: ssviColor(util25 || 0) }}>{util25 ?? "—"}<span className="text-sm">/8</span></div>
+              <div className="text-2xl font-mono mt-1" style={{ color: ssviColor(dispUtil || 0) }}>{dispUtil ?? "—"}<span className="text-sm">/8</span></div>
               <div className="text-xs font-mono mt-0.5" style={{ color: "#64708A" }}>Based on 8 claims-based utilization measures</div>
             </div>
             <div className="rounded-xl p-4" style={{ background: "#F5F6F8" }}>
               <div className="text-[11px] font-mono" style={{ color: "#8992A3" }}>Non-Hospice Spending Score{!hasReal && " (est.)"}</div>
-              <div className="text-2xl font-mono mt-1" style={{ color: ssviColor(spend25 || 0) }}>{spend25 ?? "—"}<span className="text-sm">/8</span></div>
+              <div className="text-2xl font-mono mt-1" style={{ color: ssviColor(dispSpend || 0) }}>{dispSpend ?? "—"}<span className="text-sm">/8</span></div>
               <div className="text-xs font-mono mt-0.5" style={{ color: "#64708A" }}>Part A/B spending for enrolled beneficiaries</div>
             </div>
           </div>
@@ -444,7 +500,7 @@ function SSVIBreakdownPanel({ ssviData, estimatedData }) {
           {/* 9 Measures breakdown */}
           <div>
             <div className="text-xs uppercase tracking-widest font-mono mb-3" style={{ color: "#64708A" }}>
-              The 9 CMS SSVI Measures — FY2025 Scoring Breakdown
+              The 9 CMS SSVI Measures — FY{dispYear} Scoring Breakdown
             </div>
             <div className="space-y-3">
               {SSVI_MEASURES.map((measure, i) => {
@@ -485,27 +541,27 @@ function SSVIBreakdownPanel({ ssviData, estimatedData }) {
           </div>
 
           {/* Year over year */}
-          {score24 != null && score25 != null && (
+          {showYoY && (
             <div className="rounded-xl p-4" style={{ background: "#F5F6F8" }}>
               <div className="text-xs uppercase tracking-widest font-mono mb-2" style={{ color: "#64708A" }}>Year-Over-Year Trend</div>
               <div className="flex items-center gap-4">
                 <div className="text-center">
-                  <div className="text-xs font-mono" style={{ color: "#8992A3" }}>FY2024</div>
-                  <div className="text-2xl font-mono" style={{ color: ssviColor(score24) }}>{score24}</div>
+                  <div className="text-xs font-mono" style={{ color: "#8992A3" }}>FY{priorYear}</div>
+                  <div className="text-2xl font-mono" style={{ color: ssviColor(priorTotal) }}>{priorTotal}</div>
                 </div>
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="text-lg font-mono" style={{ color: score25 > score24 ? "#D14343" : "#2E9E62" }}>
-                    {score25 > score24 ? "↑" : "↓"} {Math.abs(score25 - score24)} pts
+                  <div className="text-lg font-mono" style={{ color: dispScore > priorTotal ? "#D14343" : "#2E9E62" }}>
+                    {dispScore > priorTotal ? "↑" : "↓"} {Math.abs(dispScore - priorTotal)} pts
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="text-xs font-mono" style={{ color: "#8992A3" }}>FY2025</div>
-                  <div className="text-2xl font-mono" style={{ color: ssviColor(score25) }}>{score25}</div>
+                  <div className="text-xs font-mono" style={{ color: "#8992A3" }}>FY{dispYear}</div>
+                  <div className="text-2xl font-mono" style={{ color: ssviColor(dispScore) }}>{dispScore}</div>
                 </div>
               </div>
-              {score25 > score24 && (
+              {dispScore > priorTotal && (
                 <div className="mt-2 text-xs font-mono" style={{ color: "#D14343" }}>
-                  ⚠ Score increased {score25 - score24} points year-over-year — rising SSVI indicates increasing CMS scrutiny
+                  ⚠ Score increased {dispScore - priorTotal} points year-over-year — rising SSVI indicates increasing CMS scrutiny
                 </div>
               )}
             </div>
@@ -575,11 +631,12 @@ function Dashboard({ analysisData, ssviData }) {
   const categories = d?.complianceCategories || [];
   const findings = d?.criticalFindings || [];
 
-  // Merge real SSVI data if available
-  const effectiveSsviScore = ccnResult?.fy2025_total_ssvi ?? d?.ssviScore;
-  const effectiveSsviUtil = ccnResult?.fy2025_utilization_score ?? d?.ssviUtilizationScore;
-  const effectiveSsviSpend = ccnResult?.fy2025_spending_score ?? d?.ssviSpendingScore;
-  const isRealSsvi = ccnResult?.fy2025_total_ssvi != null;
+  // Merge real SSVI data if available — resolveSSVI picks FY2025, or FY2024 when 2025 isn't published.
+  const resolvedSsvi = resolveSSVI(ccnResult);
+  const isRealSsvi = resolvedSsvi != null;
+  const effectiveSsviScore = resolvedSsvi?.total ?? d?.ssviScore;
+  const effectiveSsviUtil = resolvedSsvi?.utilization ?? d?.ssviUtilizationScore;
+  const effectiveSsviSpend = resolvedSsvi?.spending ?? d?.ssviSpendingScore;
   const agencyName = ccnResult?.hospice_name || d?.agencyName || "Unknown Agency";
 
   return (
@@ -1322,17 +1379,19 @@ function Atlas({ analysisData, ssviData }) {
   const [libraryDocs, setLibraryDocs] = useState([]);
   const endRef = useRef(null);
 
+  const ssviResolved = ssviData ? resolveSSVI(ssviData) : null;
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
   useEffect(() => { getDocumentLibrary(DEMO_ORG_ID).then(docs => setLibraryDocs(docs || [])); }, []);
 
   const buildContext = () => {
     let ctx = "CLINIC DATA:\n";
-    if (ssviData) {
+    if (ssviData && ssviResolved) {
       ctx += `CCN: ${ssviData.ccn} — ${ssviData.hospice_name}\n`;
-      ctx += `FY2025 SSVI: ${ssviData.fy2025_total_ssvi}/16 (Utilization: ${ssviData.fy2025_utilization_score}/8, Spending: ${ssviData.fy2025_spending_score}/8)\n`;
-      ctx += `FY2024 SSVI: ${ssviData.fy2024_total_ssvi}/16\n`;
-      const flagged = SSVI_MEASURES.filter(m => ssviData[`fy2025_${m.key}`] === true).map(m => m.label);
-      if (flagged.length > 0) ctx += `Flagged measures: ${flagged.join(", ")}\n`;
+      ctx += `Latest published SSVI (FY${ssviResolved.year}): ${ssviResolved.total}/16 (Utilization: ${ssviResolved.utilization}/8, Spending: ${ssviResolved.spending}/8)${ssviResolved.isFallback ? " — FY2025 not yet published for this hospice" : ""}\n`;
+      if (ssviResolved.priorTotal != null) ctx += `FY${ssviResolved.priorYear} SSVI: ${ssviResolved.priorTotal}/16\n`;
+      const flagged = SSVI_MEASURES.filter(m => ssviResolved.flags[m.key] === true).map(m => m.label);
+      if (flagged.length > 0) ctx += `Flagged measures (FY${ssviResolved.year}): ${flagged.join(", ")}\n`;
     }
     if (analysisData) {
       ctx += `Agency: ${analysisData.agencyName}\nSSVI estimated: ${analysisData.ssviScore}/16\nCompliance Score: ${analysisData.overallComplianceScore}/100\nRisk: ${analysisData.overallRiskLevel}\nCAP Exposure: ${fmtD(analysisData.capData?.capExposure || 0)}\nRN Intensity: ${analysisData.psrMetrics?.rnUnitsPerDay} units/day\n`;
@@ -1376,7 +1435,7 @@ Answer questions about PS&R Report 810, Beneficiary Count B51562, PEPPER, CAHPS,
         <span className="text-xs font-mono" style={{ color: "#64708A" }}>Compliance Intelligence</span>
         <div className="ml-auto flex items-center gap-2">
           {analysisData && <span className="text-[11px] font-mono px-2 py-0.5 rounded" style={{ background: "#EAF6EF", color: "#2E9E62" }}>✓ Analysis loaded</span>}
-          {ssviData && <span className="text-[11px] font-mono px-2 py-0.5 rounded" style={{ background: "#F7F0E1", color: "#B8863F" }}>✓ SSVI {ssviData.fy2025_total_ssvi}/16</span>}
+          {ssviResolved && <span className="text-[11px] font-mono px-2 py-0.5 rounded" style={{ background: "#F7F0E1", color: "#B8863F" }}>✓ SSVI {ssviResolved.total}/16 (FY{ssviResolved.year})</span>}
           {libraryDocs.length > 0 && <span className="text-[11px] font-mono px-2 py-0.5 rounded" style={{ background: "#F5F6F8", color: "#64708A" }}>📚 {libraryDocs.length} docs</span>}
         </div>
       </div>
@@ -1535,6 +1594,8 @@ export default function ConnectShield() {
     setTab("dashboard");
   };
 
+  const sidebarSsvi = resolveSSVI(ssviData);
+
   return (
     <div style={{ background: "#F5F6F8", minHeight: "100vh", fontFamily: "Inter, sans-serif" }}
       className="flex flex-col md:flex-row">
@@ -1564,11 +1625,11 @@ export default function ConnectShield() {
               {ssviData?.hospice_name || analysisData?.agencyName || "Unknown"}
             </div>
             {ssviData?.ccn && <div className="text-[10px] font-mono mt-0.5" style={{ color: "#6B7A99" }}>CCN: {ssviData.ccn}</div>}
-            {ssviData?.fy2025_total_ssvi != null && (
+            {sidebarSsvi && (
               <div className="mt-2 flex items-center gap-2">
-                <div className="text-[10px] font-mono" style={{ color: "#93A0B8" }}>FY2025 SSVI</div>
-                <div className="text-sm font-mono font-bold" style={{ color: ssviColor(ssviData.fy2025_total_ssvi) }}>
-                  {ssviData.fy2025_total_ssvi}/16
+                <div className="text-[10px] font-mono" style={{ color: "#93A0B8" }}>FY{sidebarSsvi.year} SSVI</div>
+                <div className="text-sm font-mono font-bold" style={{ color: ssviColor(sidebarSsvi.total) }}>
+                  {sidebarSsvi.total}/16
                 </div>
               </div>
             )}
