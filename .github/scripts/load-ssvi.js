@@ -234,6 +234,20 @@ async function main() {
       console.log('S24:', JSON.stringify(s24));
     }
 
+    // Read the two sub-scores directly. The TOTAL is COMPUTED as spending + utilization —
+    // this is CMS's own definition, so the total can never grab the wrong column or drift
+    // from the parts (the old bug read a loose 'FY2025' match and landed on the spending column).
+    const sp25 = toNum(findVal(row, 'Non-Hospice Spending Score FY2025', 'Spending FY2025') ||
+                       findVal(d25, 'Non-Hospice Spending Score', 'Spending Score'));
+    const ut25 = toNum(findVal(row, 'Utilization Score FY2025', 'Utilization FY2025') ||
+                       findVal(d25, 'Utilization Score', 'Utilization'));
+    const sp24 = toNum(findVal(row, 'Non-Hospice Spending Score FY2024', 'Spending FY2024') ||
+                       findVal(d24, 'Non-Hospice Spending Score', 'Spending Score'));
+    const ut24 = toNum(findVal(row, 'Utilization Score FY2024', 'Utilization FY2024') ||
+                       findVal(d24, 'Utilization Score', 'Utilization'));
+    const total25 = (sp25 == null && ut25 == null) ? null : (sp25 || 0) + (ut25 || 0);
+    const total24 = (sp24 == null && ut24 == null) ? null : (sp24 || 0) + (ut24 || 0);
+
     return {
       ccn,
       hospice_name: findVal(row, 'Hospice Name') || findVal(d25, 'Hospice Name'),
@@ -242,18 +256,14 @@ async function main() {
       urban_rural: findVal(d25, 'Hospice Address Urban/Rural (U/R)', 'Urban/Rural') ||
                    findVal(s25, 'Hospice Address Urban/Rural (U/R)', 'Urban/Rural'),
 
-      // Total SSVI comes from the Total SSVI Score sheet
-      fy2025_total_ssvi: toNum(findVal(row, 'FY2025', 'SSVI FY2025', 'Total SSVI FY2025')),
-      fy2025_spending_score: toNum(findVal(row, 'Non-Hospice Spending Score FY2025', 'Spending FY2025') ||
-                                   findVal(d25, 'Non-Hospice Spending Score', 'Spending Score')),
-      fy2025_utilization_score: toNum(findVal(row, 'Utilization Score FY2025', 'Utilization FY2025') ||
-                                      findVal(d25, 'Utilization Score', 'Utilization')),
+      // Totals are computed (spending + utilization); sub-scores read directly.
+      fy2025_total_ssvi: total25,
+      fy2025_spending_score: sp25,
+      fy2025_utilization_score: ut25,
 
-      fy2024_total_ssvi: toNum(findVal(row, 'FY2024', 'SSVI FY2024', 'Total SSVI FY2024')),
-      fy2024_spending_score: toNum(findVal(row, 'Non-Hospice Spending Score FY2024', 'Spending FY2024') ||
-                                   findVal(d24, 'Non-Hospice Spending Score', 'Spending Score')),
-      fy2024_utilization_score: toNum(findVal(row, 'Utilization Score FY2024', 'Utilization FY2024') ||
-                                      findVal(d24, 'Utilization Score', 'Utilization')),
+      fy2024_total_ssvi: total24,
+      fy2024_spending_score: sp24,
+      fy2024_utilization_score: ut24,
 
       fy2025_spending_per_day: toNum(findVal(d25, 'Non-Hospice Spending per Day', 'Spending per Day')),
       fy2025_total_spending: toNum(findVal(d25, 'Total Non-Hospice Spending', 'Total Spending')),
@@ -288,10 +298,10 @@ async function main() {
   console.log(`\nMapped ${mapped.length} rows`);
   console.log(`With FY2025 total SSVI: ${withTotal}`);
   console.log(`With FY2025 utilization: ${withUtil}`);
-  console.log(`With FY2025 No CHC/GIP flag: ${withChc}   (was ~0 before the fix)`);
-  console.log(`With FY2025 Return-7day flag: ${withReturn}   (was ~0 before the fix)`);
+  console.log(`With FY2025 No CHC/GIP flag: ${withChc}`);
+  console.log(`With FY2025 Return-7day flag: ${withReturn}`);
 
-  // Sanity check: the 8 utilization flags should sum to the published utilization score
+  // Sanity check: the 8 utilization flags should sum to the utilization score.
   let recon = 0, reconTotal = 0;
   for (const r of mapped) {
     if (r.fy2025_utilization_score == null) continue;
@@ -302,7 +312,10 @@ async function main() {
     const sum = flags.reduce((a, f) => a + (f ? 1 : 0), 0);
     if (sum === r.fy2025_utilization_score) recon++;
   }
-  console.log(`Reconciliation (8 flags add up to published utilization score): ${recon}/${reconTotal}`);
+  console.log(`Reconciliation (8 flags add up to utilization score): ${recon}/${reconTotal}`);
+
+  const em = mapped.find(r => r.ccn === 'B51562');
+  if (em) console.log(`B51562 check → FY2025 total ${em.fy2025_total_ssvi} (spend ${em.fy2025_spending_score} + util ${em.fy2025_utilization_score}), FY2024 total ${em.fy2024_total_ssvi}`);
 
   console.log('\nUpserting to Supabase...');
   const BATCH = 500;
