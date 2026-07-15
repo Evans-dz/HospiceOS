@@ -19,13 +19,14 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ─── SUPABASE CCN LOOKUP ──────────────────────────────────────────────────────
 async function lookupCCN(ccn) {
   const clean = ccn.trim().toUpperCase();
-  const url = `${SUPABASE_URL}/rest/v1/ssvi_scores?ccn=eq.${encodeURIComponent(clean)}&limit=1`;
-  const res = await fetch(url, {
-    headers: {
-      "apikey": SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type": "application/json",
-    },
+  const res = await fetch(`/api/ssvi?ccn=${encodeURIComponent(clean)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Lookup failed: ${res.status}`);
+  }
+  return await res.json();
+}
   });
   if (!res.ok) throw new Error(`Lookup failed: ${res.status}`);
   const data = await res.json();
