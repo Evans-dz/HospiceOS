@@ -29,6 +29,17 @@ const toBool = (v) => {
 // Normalize column name for matching — strips whitespace, newlines, special chars
 const norm = (s) => String(s || '').toLowerCase().replace(/[\s\n\r\t]+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
 
+// Find a measure-flag column by matching distinctive words in the header, then coerce to bool.
+// tokens = every word must appear in the (normalized) header. exclude = none of these may appear.
+const flag = (obj, tokens, exclude = []) => {
+  if (!obj) return null;
+  const key = Object.keys(obj).find(k => {
+    const nk = norm(k);
+    return tokens.every(t => nk.includes(t)) && !exclude.some(x => nk.includes(x));
+  });
+  return key ? toBool(obj[key]) : null;
+};
+
 // Find value by normalized partial key match
 const findVal = (obj, ...patterns) => {
   if (!obj) return null;
@@ -249,34 +260,49 @@ async function main() {
       fy2024_spending_per_day: toNum(findVal(d24, 'Non-Hospice Spending per Day', 'Spending per Day')),
       fy2024_total_spending: toNum(findVal(d24, 'Total Non-Hospice Spending', 'Total Spending')),
 
-      // Measure flags from Scoring Components sheets
-      fy2025_no_chc_gip: toBool(findVal(s25, 'No CHC or GIP Days', 'No CHC', 'CHC or GIP')),
-      fy2025_nursing_facility: toBool(findVal(s25, 'Nursing Facility', 'RHC days in Nursing')),
-      fy2025_last_two_days: toBool(findVal(s25, 'Last Two Days', 'Last Two RHC Days', 'Visits in Last Two')),
-      fy2025_los_180: toBool(findVal(s25, 'LOS 180', '180 Days', 'Length of Stay', 'Discharges with LOS')),
-      fy2025_live_discharge: toBool(findVal(s25, 'Live Discharge Rate', 'Live Discharge')),
-      fy2025_sn_minutes: toBool(findVal(s25, 'Skilled Nursing Minutes', 'SN Minutes', 'Skilled Nursing Min')),
-      fy2025_weekend_visits: toBool(findVal(s25, 'Weekend RHC Days', 'Weekend Visits', 'Weekend')),
-      fy2025_return_7days: toBool(findVal(s25, 'Return 7 Days', 'Returning in 7', 'Live Discharges Returning', '7 Days')),
+      // Measure flags — matched by the one distinctive word in each header (robust to CMS wording)
+      fy2025_no_chc_gip:       flag(s25, ['chc']),
+      fy2025_nursing_facility: flag(s25, ['nursing', 'facilit']),
+      fy2025_last_two_days:    flag(s25, ['last', 'two']),
+      fy2025_los_180:          flag(s25, ['180']),
+      fy2025_live_discharge:   flag(s25, ['live', 'discharge'], ['return']),
+      fy2025_sn_minutes:       flag(s25, ['minute']),
+      fy2025_weekend_visits:   flag(s25, ['weekend']),
+      fy2025_return_7days:     flag(s25, ['return']),
 
-      fy2024_no_chc_gip: toBool(findVal(s24, 'No CHC or GIP Days', 'No CHC', 'CHC or GIP')),
-      fy2024_nursing_facility: toBool(findVal(s24, 'Nursing Facility', 'RHC days in Nursing')),
-      fy2024_last_two_days: toBool(findVal(s24, 'Last Two Days', 'Last Two RHC Days', 'Visits in Last Two')),
-      fy2024_los_180: toBool(findVal(s24, 'LOS 180', '180 Days', 'Length of Stay', 'Discharges with LOS')),
-      fy2024_live_discharge: toBool(findVal(s24, 'Live Discharge Rate', 'Live Discharge')),
-      fy2024_sn_minutes: toBool(findVal(s24, 'Skilled Nursing Minutes', 'SN Minutes', 'Skilled Nursing Min')),
-      fy2024_weekend_visits: toBool(findVal(s24, 'Weekend RHC Days', 'Weekend Visits', 'Weekend')),
-      fy2024_return_7days: toBool(findVal(s24, 'Return 7 Days', 'Returning in 7', 'Live Discharges Returning', '7 Days')),
+      fy2024_no_chc_gip:       flag(s24, ['chc']),
+      fy2024_nursing_facility: flag(s24, ['nursing', 'facilit']),
+      fy2024_last_two_days:    flag(s24, ['last', 'two']),
+      fy2024_los_180:          flag(s24, ['180']),
+      fy2024_live_discharge:   flag(s24, ['live', 'discharge'], ['return']),
+      fy2024_sn_minutes:       flag(s24, ['minute']),
+      fy2024_weekend_visits:   flag(s24, ['weekend']),
+      fy2024_return_7days:     flag(s24, ['return']),
     };
   }).filter(Boolean);
 
   const withTotal = mapped.filter(r => r.fy2025_total_ssvi !== null).length;
   const withUtil = mapped.filter(r => r.fy2025_utilization_score !== null).length;
-  const withFlags = mapped.filter(r => r.fy2025_no_chc_gip !== null).length;
+  const withChc = mapped.filter(r => r.fy2025_no_chc_gip !== null).length;
+  const withReturn = mapped.filter(r => r.fy2025_return_7days !== null).length;
   console.log(`\nMapped ${mapped.length} rows`);
   console.log(`With FY2025 total SSVI: ${withTotal}`);
   console.log(`With FY2025 utilization: ${withUtil}`);
-  console.log(`With FY2025 measure flags: ${withFlags}`);
+  console.log(`With FY2025 No CHC/GIP flag: ${withChc}   (was ~0 before the fix)`);
+  console.log(`With FY2025 Return-7day flag: ${withReturn}   (was ~0 before the fix)`);
+
+  // Sanity check: the 8 utilization flags should sum to the published utilization score
+  let recon = 0, reconTotal = 0;
+  for (const r of mapped) {
+    if (r.fy2025_utilization_score == null) continue;
+    const flags = [r.fy2025_no_chc_gip, r.fy2025_nursing_facility, r.fy2025_last_two_days, r.fy2025_los_180,
+                   r.fy2025_live_discharge, r.fy2025_sn_minutes, r.fy2025_weekend_visits, r.fy2025_return_7days];
+    if (flags.some(f => f === null)) continue;
+    reconTotal++;
+    const sum = flags.reduce((a, f) => a + (f ? 1 : 0), 0);
+    if (sum === r.fy2025_utilization_score) recon++;
+  }
+  console.log(`Reconciliation (8 flags add up to published utilization score): ${recon}/${reconTotal}`);
 
   console.log('\nUpserting to Supabase...');
   const BATCH = 500;
