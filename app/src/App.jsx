@@ -13,9 +13,6 @@ const FONT_IMPORT = `
 `;
 
 const MODEL = "claude-sonnet-4-6";
-const SUPABASE_URL = "https://ojqdfodqffipwtpnvdkz.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qcWRmb2RxZmZpcHd0cG52ZGt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0NzI4MzgsImV4cCI6MjA2ODA0ODgzOH0.aFGODMJSCjLlGqLcPtJAaJfcFy0TGxGGHs7v8gu-LBE";
-
 // ─── SUPABASE CCN LOOKUP ──────────────────────────────────────────────────────
 async function lookupCCN(ccn) {
   const clean = ccn.trim().toUpperCase();
