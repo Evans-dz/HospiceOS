@@ -24,12 +24,6 @@ async function lookupCCN(ccn) {
   }
   return await res.json();
 }
-  });
-  if (!res.ok) throw new Error(`Lookup failed: ${res.status}`);
-  const data = await res.json();
-  return data.length > 0 ? data[0] : null;
-}
-
 // ─── SUPABASE PLACEHOLDER ─────────────────────────────────────────────────────
 const SUPABASE_READY = false;
 const DEMO_ORG_ID = "demo_org_001";
